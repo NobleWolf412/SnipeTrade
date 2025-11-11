@@ -80,6 +80,8 @@ class Config:
             'max_pairs': self._get_int('MAX_PAIRS', 50),
             'max_workers': self._get_int('MAX_WORKERS', 5),
             'top_setups_limit': self._get_int('TOP_SETUPS_LIMIT', 10),
+            'adapter_cache_ttl': self._get_adapter_cache_ttl(),
+            'timeframe_cache_ttl': self._get_int('TIMEFRAME_CACHE_TTL', 300),
             
             # Output settings
             'json_output_dir': self._get('JSON_OUTPUT_DIR', './output'),
@@ -154,6 +156,29 @@ class Config:
         exchange_config.update(json_exchange_config)
 
         return exchange_config
+
+    def _get_adapter_cache_ttl(self) -> Dict[str, int]:
+        """Return adapter TTL configuration merging defaults with overrides."""
+
+        # Default TTLs (matches CcxtAdapter.DEFAULT_TTLS)
+        defaults = {
+            "markets": 60 * 60,   # 1 hour
+            "tickers": 30,        # 30 seconds
+            "ohlcv": 60,          # 1 minute
+        }
+        json_overrides = self.json_config.get('adapter_cache_ttl', {})
+        if isinstance(json_overrides, dict):
+            for key in defaults:
+                if key in json_overrides:
+                    try:
+                        defaults[key] = int(json_overrides[key])
+                    except (TypeError, ValueError):
+                        continue
+
+        defaults['markets'] = self._get_int('ADAPTER_TTL_MARKETS', defaults['markets'])
+        defaults['tickers'] = self._get_int('ADAPTER_TTL_TICKERS', defaults['tickers'])
+        defaults['ohlcv'] = self._get_int('ADAPTER_TTL_OHLCV', defaults['ohlcv'])
+        return defaults
 
     def _get(self, key: str, default: Any = None) -> Any:
         """Get configuration value
@@ -267,5 +292,13 @@ class Config:
         
         if self.config.get('max_pairs', 0) < 1:
             issues.append("max_pairs must be at least 1")
-        
+
+        adapter_ttls = self.config.get('adapter_cache_ttl', {})
+        for key, value in adapter_ttls.items():
+            if isinstance(value, (int, float)) and value <= 0:
+                issues.append(f"adapter_cache_ttl['{key}'] must be greater than 0")
+
+        if self.config.get('timeframe_cache_ttl', 0) <= 0:
+            issues.append("timeframe_cache_ttl must be greater than 0")
+
         return issues
