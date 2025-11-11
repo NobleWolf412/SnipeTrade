@@ -166,6 +166,15 @@ class Config:
             'max_open_positions': self._get_int('MAX_OPEN_POSITIONS', 3),
             'risk_per_trade_percent': self._get_float('RISK_PER_TRADE_PERCENT', 2.0),
 
+            # Adaptive autonomy
+            'auto_tune_enabled': self._get_bool('AUTO_TUNE_ENABLED', True),
+            'auto_tune_freq_days': self._get_int('AUTO_TUNE_FREQ_DAYS', 7),
+            'auto_tune_approval_required': self._get_bool('AUTO_TUNE_APPROVAL_REQUIRED', True),
+            'dashboard_port': self._get_int('DASHBOARD_PORT', 8080),
+            'risk_target_max_dd': self._get_float('RISK_TARGET_MAX_DD', 10.0),
+            'risk_target_pf_min': self._get_float('RISK_TARGET_PF_MIN', 1.3),
+            'multi_exchange_enabled': self._get_bool('MULTI_EXCHANGE_ENABLED', False),
+
             # Data caching
             'ohlcv_cache_dir': self._get('OHLCV_CACHE_DIR', str(OHLCV_CACHE_DIR)),
             'ohlcv_cache_ttl_ms': self._get_int('OHLCV_CACHE_TTL_MS', OHLCV_CACHE_TTL_MS),

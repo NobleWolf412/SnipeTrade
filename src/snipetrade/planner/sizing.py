@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from .leverage import estimate_liq_price, liq_is_safe, recommend_size_adjustment
 
@@ -24,7 +24,8 @@ def position_size_leverage(entry: float, stop: float, side: str,
                            min_notional: float,
                            maint_margin_rate: float,
                            atr: float,
-                           cfg) -> Dict[str, Any]:
+                           cfg,
+                           leverage_multiplier: Optional[float] = None) -> Dict[str, Any]:
     """Compute leverage-aware position size with liquidation safety."""
 
     if entry <= 0 or price <= 0:
@@ -37,6 +38,17 @@ def position_size_leverage(entry: float, stop: float, side: str,
         return {"qty": 0.0, "liq": 0.0, "reduced": False, "reason": "zero stop distance"}
 
     raw_qty = risk_usd / distance
+    leverage_multiplier = (
+        leverage_multiplier
+        if leverage_multiplier is not None
+        else _get_attr(cfg, "LEVERAGE_DYNAMIC_MULTIPLIER", 1.0)
+    )
+    leverage_multiplier = max(leverage_multiplier, 0.1)
+    if leverage_multiplier != 1.0:
+        risk_reason = "dynamic leverage"
+    else:
+        risk_reason = ""
+    raw_qty *= leverage_multiplier
     qty = max(raw_qty, 0.0)
 
     lot_size = max(lot_size, 0.0)
@@ -49,7 +61,7 @@ def position_size_leverage(entry: float, stop: float, side: str,
         qty = _round_qty(min_notional / price, lot_size) if lot_size else (min_notional / price)
         notional = qty * price
 
-    effective_leverage = leverage
+    effective_leverage = max(leverage * leverage_multiplier, 1.0)
     liq = estimate_liq_price(entry, side, effective_leverage, maint_margin_rate)
     safe, reason = liq_is_safe(stop, liq, side, atr,
                                _get_attr(cfg, "LIQ_BUFFER_PCT", 0.0),
@@ -81,4 +93,7 @@ def position_size_leverage(entry: float, stop: float, side: str,
             if not safe and _get_attr(cfg, "SKIP_IF_AFTER_REDUCE_STILL_UNSAFE", False):
                 return {"qty": 0.0, "liq": liq, "reduced": reduced, "reason": reason}
 
-    return {"qty": qty, "liq": liq, "reduced": reduced, "reason": reason}
+    reason_msg = reason
+    if risk_reason:
+        reason_msg = f"{reason or 'ok'}; {risk_reason}"
+    return {"qty": qty, "liq": liq, "reduced": reduced, "reason": reason_msg}

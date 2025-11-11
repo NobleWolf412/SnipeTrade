@@ -12,7 +12,6 @@ __all__ = [
     "RateLimitError",
     "OHLCV",
     "UnifiedCCXTAdapter",
-    "create_exchange",
     "is_pair_on_phemex",
     "OfflineCcxtAdapter",
     "CachedOHLCV",

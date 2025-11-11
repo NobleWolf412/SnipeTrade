@@ -1,0 +1,18 @@
+rules:
+  - name: halt_on_drawdown
+    when:
+      drawdown_pct_gt: 10
+    then:
+      action: switch_profile
+      profile: conservative.yaml
+  - name: expand_symbols
+    when:
+      win_rate_gt: 0.65
+    then:
+      action: enable_symbol_group
+      group: expansion
+  - name: halt_on_latency
+    when:
+      latency_ms_gt: 1000
+    then:
+      action: halt_trading
