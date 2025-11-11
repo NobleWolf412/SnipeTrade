@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 from datetime import datetime
 from snipetrade.output.json_formatter import JSONFormatter
-from snipetrade.models import TradeSetup, ScanResult, TradeDirection
+from snipetrade.models import TradeSetup, ScanResult
 
 
 class TestJSONFormatter:
@@ -27,10 +27,13 @@ class TestJSONFormatter:
         setup = TradeSetup(
             symbol='BTC/USDT',
             exchange='binance',
-            direction=TradeDirection.LONG,
+            direction='LONG',
             score=75.0,
             confidence=0.8,
-            entry_price=50000.0,
+            entry_plan=[50000.0],
+            stop_loss=48000.0,
+            take_profits=[52000.0, 54000.0],
+            rr=2.5,
             reasons=['Test reason']
         )
         
@@ -50,7 +53,7 @@ class TestJSONFormatter:
             exchange='binance',
             total_pairs_scanned=50,
             total_setups_found=5,
-            top_setups=[]
+            setups=[]
         )
         
         formatter = JSONFormatter()
@@ -66,10 +69,14 @@ class TestJSONFormatter:
         setup = TradeSetup(
             symbol='BTC/USDT',
             exchange='binance',
-            direction=TradeDirection.LONG,
+            direction='LONG',
             score=75.0,
             confidence=0.8,
-            entry_price=50000.0
+            entry_plan=[50000.0],
+            stop_loss=48000.0,
+            take_profits=[52000.0],
+            rr=2.5,
+            reasons=['Auto reason']
         )
         
         formatter = JSONFormatter(output_dir=tmp_path)
@@ -89,7 +96,7 @@ class TestJSONFormatter:
             exchange='binance',
             total_pairs_scanned=50,
             total_setups_found=5,
-            top_setups=[]
+            setups=[]
         )
         
         formatter = JSONFormatter(output_dir=tmp_path)
@@ -107,10 +114,14 @@ class TestJSONFormatter:
         setup = TradeSetup(
             symbol='BTC/USDT',
             exchange='binance',
-            direction=TradeDirection.LONG,
+            direction='LONG',
             score=75.0,
             confidence=0.8,
-            entry_price=50000.0
+            entry_plan=[50000.0],
+            stop_loss=48000.0,
+            take_profits=[52000.0],
+            rr=2.5,
+            reasons=['Auto reason']
         )
         
         formatter = JSONFormatter()
@@ -124,10 +135,14 @@ class TestJSONFormatter:
         setup = TradeSetup(
             symbol='BTC/USDT',
             exchange='binance',
-            direction=TradeDirection.LONG,
+            direction='LONG',
             score=75.0,
             confidence=0.8,
-            entry_price=50000.0
+            entry_plan=[50000.0],
+            stop_loss=48000.0,
+            take_profits=[52000.0],
+            rr=2.5,
+            reasons=['Auto reason']
         )
         
         formatter = JSONFormatter()

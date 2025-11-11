@@ -130,7 +130,7 @@ Results are saved to `./output/` directory:
 ls output/
 # scan_<id>_<timestamp>.json
 
-cat output/scan_*.json | jq '.top_setups[0]'
+cat output/scan_*.json | jq '.setups[0]'
 ```
 
 ### Audit Logs
@@ -176,7 +176,7 @@ result = scanner.scan()
 
 # Access results
 print(f"Found {result.total_setups_found} setups")
-for setup in result.top_setups:
+for setup in result.setups:
     print(f"{setup.symbol}: Score {setup.score:.1f}")
 ```
 

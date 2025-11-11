@@ -1,52 +1,37 @@
-"""Timeframe parsing utilities."""
+"""Utilities for timeframe parsing and manipulation."""
 
 from __future__ import annotations
 
-import re
 
-__all__ = ["parse_tf_to_ms"]
-
-# Mapping from timeframe unit to milliseconds
-_UNIT_TO_MS = {
-    "M": 60 * 1000,          # Minutes
-    "H": 60 * 60 * 1000,     # Hours
-    "D": 24 * 60 * 60 * 1000,  # Days
-    "W": 7 * 24 * 60 * 60 * 1000,  # Weeks
+_UNIT_TO_MINUTES = {
+    "m": 1,
+    "h": 60,
+    "d": 60 * 24,
+    "w": 60 * 24 * 7,
 }
 
 
-def parse_tf_to_ms(tf: str) -> int:
-    """Convert a timeframe string (e.g. ``15m``) to milliseconds.
+def parse_tf_to_ms(timeframe: str) -> int:
+    """Convert standard timeframe strings (e.g. ``1h``) into milliseconds."""
 
-    Args:
-        tf: Timeframe string combining a positive integer and a unit suffix
-            (``m`` for minutes, ``h`` for hours, ``d`` for days, ``w`` for weeks).
+    if not timeframe:
+        raise ValueError("Timeframe must be provided")
 
-    Returns:
-        The timeframe expressed in milliseconds.
+    tf = timeframe.strip().lower()
+    if tf.endswith("ms"):
+        value = tf[:-2]
+        return int(float(value))
 
-    Raises:
-        ValueError: If ``tf`` is empty, malformed, or uses an unsupported unit.
-    """
+    unit = tf[-1]
+    value = tf[:-1]
 
-    if not isinstance(tf, str):
-        raise ValueError("Timeframe must be provided as a string")
+    if unit not in _UNIT_TO_MINUTES:
+        raise ValueError(f"Unsupported timeframe unit: {timeframe}")
 
-    normalized = tf.strip().upper()
-    if not normalized:
-        raise ValueError("Timeframe string cannot be empty")
+    try:
+        quantity = float(value)
+    except ValueError as exc:  # pragma: no cover - defensive branch
+        raise ValueError(f"Invalid timeframe quantity: {timeframe}") from exc
 
-    match = re.fullmatch(r"(\d+)\s*([MHDW])", normalized)
-    if not match:
-        raise ValueError(f"Unsupported timeframe format: {tf}")
-
-    value, unit = match.groups()
-    multiplier = _UNIT_TO_MS.get(unit)
-    if multiplier is None:
-        raise ValueError(f"Unsupported timeframe unit: {unit}")
-
-    amount = int(value)
-    if amount <= 0:
-        raise ValueError("Timeframe value must be greater than zero")
-
-    return amount * multiplier
+    minutes = quantity * _UNIT_TO_MINUTES[unit]
+    return int(minutes * 60 * 1000)

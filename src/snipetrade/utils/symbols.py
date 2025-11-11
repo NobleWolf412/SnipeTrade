@@ -1,42 +1,19 @@
-"""Symbol formatting helpers for exchange interoperability."""
+"""Utility helpers for working with exchange-specific symbols."""
 
 from __future__ import annotations
 
-__all__ = ["normalize_symbol_for_exchange"]
 
+def normalize_symbol_for_exchange(exchange_id: str, symbol: str) -> str:
+    """Normalise pair notation so cache lookups remain consistent."""
 
-def normalize_symbol_for_exchange(symbol: str, exchange: str = "phemex") -> str:
-    """Normalize a market symbol for use with a specific exchange.
+    cleaned = symbol.strip().upper()
+    cleaned = cleaned.replace('-', '/').replace(':', '/').replace(' ', '')
 
-    Currently the normalization strategy is exchange agnostic but the
-    ``exchange`` argument is accepted for future compatibility.
+    if '/' not in cleaned and len(cleaned) > 4:
+        base, quote = cleaned[:-4], cleaned[-4:]
+        cleaned = f"{base}/{quote}"
 
-    Args:
-        symbol: The input market symbol (e.g. ``btc-usdt`` or ``eth``).
-        exchange: Target exchange identifier. Defaults to ``"phemex"``.
+    if exchange_id.lower() == "phemex" and cleaned.endswith("/USDTUSDT"):
+        cleaned = cleaned.replace("/USDTUSDT", "/USDT")
 
-    Returns:
-        Normalized trading pair symbol (e.g. ``BTC/USDT``).
-
-    Raises:
-        ValueError: If the provided symbol is empty.
-    """
-
-    if not isinstance(symbol, str):
-        raise ValueError("Symbol must be provided as a string")
-
-    cleaned = symbol.strip()
-    if not cleaned:
-        raise ValueError("Symbol cannot be empty")
-
-    normalized = cleaned.replace("-", "/").upper()
-
-    parts = [part for part in normalized.split("/") if part]
-
-    if not parts:
-        raise ValueError("Symbol must contain at least a base asset")
-
-    base = parts[0]
-    quote = parts[1] if len(parts) > 1 else "USDT"
-
-    return f"{base}/{quote}"
+    return cleaned
