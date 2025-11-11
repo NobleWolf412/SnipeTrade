@@ -181,5 +181,16 @@ class CcxtAdapter:
         return f"{symbol}:{timeframe}:{limit}:{since or 0}"
 
 
-__all__ = ["CcxtAdapter", "DEFAULT_EXCHANGE"]
+__all__ = ["CcxtAdapter", "DEFAULT_EXCHANGE", "create_exchange"]
+
+
+def create_exchange(
+    exchange_id: Optional[str] = None,
+    config: Optional[Dict[str, Any]] = None,
+    **kwargs: Any,
+) -> CcxtAdapter:
+    """Factory helper for creating exchange adapters."""
+    
+    resolved_id = (exchange_id or DEFAULT_EXCHANGE).lower()
+    return CcxtAdapter(resolved_id, config=config, **kwargs)
 

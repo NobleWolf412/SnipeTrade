@@ -3,7 +3,7 @@
 import ccxt
 import pytest
 
-from snipetrade.exchanges.ccxt_adapter import UnifiedCCXTAdapter, OHLCV
+from snipetrade.exchanges import UnifiedCCXTAdapter, OHLCV
 
 
 class _DummyBase:
