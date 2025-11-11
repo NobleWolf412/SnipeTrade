@@ -20,6 +20,31 @@ OHLCV_CACHE_TTL_MS = 2 * 60 * 1000  # 2 minutes
 FAST_TF_TTL = 15 * 60 * 1000  # 15 minutes
 SLOW_TF_TTL = 60 * 60 * 1000  # 1 hour
 
+# --- Autotrade master switch ---
+AUTOTRADE_ENABLED = False            # default OFF
+AUTOTRADE_MODE = "paper"             # "paper" | "live25" | "live50" | "live100"
+
+# --- Policy / brakes ---
+MAX_CONCURRENT_TRADES = 3
+DAILY_RISK_USD_LIMIT = 300           # stop if daily realized loss exceeds
+PER_TRADE_RISK_USD = 50              # overrides batch if needed
+PER_SYMBOL_EXPOSURE_USD_MAX = 1500
+TOTAL_EXPOSURE_USD_MAX = 4000
+ALLOWLIST_SYMBOLS = ["BTC/USDT", "ETH/USDT", "SOL/USDT"]
+TRADING_WINDOWS_UTC = ["07:00-20:00"]    # only place during these windows
+BLOCKLIST_DAYS = []                      # e.g. ["2025-12-25"]
+
+# --- Execution behavior ---
+POST_ONLY_DEFAULT = True
+MAKER_TIMEOUT_SEC = 90                  # switch to stop-entry after
+AMEND_ON_DRIFT_BPS = 8                  # reprice maker if best changes by N bps
+CANCEL_ON_TIMEOUT_SEC = 600             # hard cancel stale orders
+RETRY_BACKOFF_MS = [400, 800, 1600]     # transient failures
+
+# --- Compliance / audit ---
+IDEMPOTENCY_PREFIX = "snp_v1_"
+LOG_REDACT_KEYS = True
+
 
 class Config:
     """Configuration manager for SnipeTrade

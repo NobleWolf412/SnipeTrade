@@ -6,6 +6,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 
 from snipetrade.models import ScanResult, TradeSetup, Timeframe
+from snipetrade.config import DEFAULT_TIMEFRAMES
 from snipetrade.exchanges import Exchange, create_exchange
 from snipetrade.filters.pair_filter import PairFilter
 from snipetrade.scoring.confluence import ConfluenceScorer
