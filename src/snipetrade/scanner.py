@@ -1,9 +1,10 @@
 """Main scanner engine orchestrating all modules"""
 
 import uuid
-from typing import List, Dict, Optional, Callable, Union
+from typing import Callable, Dict, List, Optional, Union
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
+
 from snipetrade.models import ScanResult, TradeSetup, Timeframe
 from snipetrade.exchanges.base import BaseExchange, create_exchange
 from snipetrade.filters.pair_filter import PairFilter
@@ -11,6 +12,14 @@ from snipetrade.scoring.confluence import ConfluenceScorer
 from snipetrade.output.json_formatter import JSONFormatter
 from snipetrade.output.telegram import TelegramNotifier
 from snipetrade.output.audit import AuditLogger
+
+from snipetrade import config as cfg_defaults
+from snipetrade.planner import (
+    decide_execution,
+    position_size_leverage,
+    propose_entries_adv,
+)
+from snipetrade.outputs import formatter as planner_formatter
 
 
 class TradeScanner:
@@ -288,3 +297,79 @@ class TradeScanner:
         self.output_results(scan_result)
         
         return scan_result
+
+
+def build_trade_plan(
+    setup: Dict,
+    price_ctx: Dict,
+    orderflow_ctx: Dict,
+    structure_ctx: Dict,
+    vwap_ctx: Dict,
+    atr: float,
+    stop: float,
+    tps: List[float],
+    now_ts_ms: int,
+    leverage: float = None,
+    cfg=cfg_defaults,
+) -> Dict:
+    """Build a complete trade plan payload wired through the planner stack."""
+
+    leverage = leverage or cfg.DEFAULT_LEVERAGE
+    entries = propose_entries_adv(
+        {"direction": setup["direction"], "atr": atr, "stop": stop},
+        price_ctx,
+        orderflow_ctx,
+        structure_ctx,
+        vwap_ctx,
+        cfg,
+    )
+
+    size_info = position_size_leverage(
+        entry=entries["near"]["price"],
+        stop=stop,
+        side=setup["direction"],
+        leverage=leverage,
+        price=price_ctx.get("price"),
+        risk_usd=cfg.RISK_USD,
+        lot_size=cfg.LOT_SIZE,
+        min_notional=cfg.MIN_NOTIONAL,
+        maint_margin_rate=cfg.MAINT_MARGIN_RATE,
+        atr=atr,
+        cfg=cfg,
+    )
+
+    execution = decide_execution(entries["near"], entries["far"], now_ts_ms, cfg)
+
+    liq_gap = abs(stop - size_info["liq"])
+    liq_buffer = f"gap {liq_gap:.3f}"
+
+    payload = {
+        "symbol": setup["symbol"],
+        "timeframe": setup.get("timeframe", "15m"),
+        "direction": setup["direction"],
+        "score": setup.get("score", 0),
+        "entry_near": entries["near"]["price"],
+        "entry_far": entries["far"]["price"],
+        "stop": stop,
+        "tp1": tps[0] if tps else None,
+        "leverage": leverage,
+        "qty": size_info["qty"],
+        "liq": size_info["liq"],
+        "liq_buffer": liq_buffer,
+        "rr": setup.get("rr"),
+        "distance_pct": setup.get("distance_pct"),
+        "spread_bps": orderflow_ctx.get("spread_bps"),
+        "volume_usd_24h": setup.get("volume_usd_24h"),
+        "reasons": setup.get("reasons", []),
+        "execution": execution,
+        "links": setup.get("links", []),
+    }
+
+    payload["alert_text"] = planner_formatter.format_telegram_alert(payload)
+
+    return {
+        "entries": entries,
+        "size": size_info,
+        "execution": execution,
+        "payload": payload,
+    }

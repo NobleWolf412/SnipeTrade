@@ -158,6 +158,7 @@ class Config:
         """Get configuration value by key"""
         return self.config.get(key, default)
 
+
     def to_dict(self) -> Dict[str, Any]:
         """Get configuration as dictionary"""
         return self.config.copy()
@@ -214,5 +215,54 @@ class Config:
         
         if self.config.get('max_pairs', 0) < 1:
             issues.append("max_pairs must be at least 1")
-        
+
         return issues
+
+
+# --- Exchange & margin defaults ---
+DEFAULT_EXCHANGE = "phemex"
+MARGIN_MODE = "isolated"
+DEFAULT_LEVERAGE = 10
+MAINT_MARGIN_RATE = 0.005
+
+# --- Risk & sizing ---
+RISK_USD = 50.0
+MIN_NOTIONAL = 5.0
+LOT_SIZE = 0.001
+
+# --- Fees & slippage ---
+TAKER_FEE_BPS = 7.5
+MAKER_FEE_BPS = 1.0
+SLIPPAGE_BPS = 2.0
+EST_FUNDING_BPS_PER_8H = 1.0
+
+# --- Quality / distance guards ---
+MIN_RR = 2.0
+ENTRY_DISTANCE_PCT = (0.5, 5.0)
+FRESHNESS_HALF_LIFE_MIN = 30
+MAX_SETUP_AGE_MIN = 90
+MIN_VOLUME_USD = 100_000.0
+MAX_SPREAD_BPS = 20
+MIN_CONFLUENCE = 3
+MIN_SCORE = 60
+MAX_SETUPS = 5
+
+# --- Entries / execution ---
+MAKER_SPREAD_MAX_BPS = 10
+OBI_MAKER_THRESHOLD = 0.20
+STOP_ENTRY_TICKS = 1
+QUEUE_OFFSET_TICKS = 1
+ENTRY_ATR_MIN_FRAC = 0.20
+ENTRY_TIMEOUT_SEC = 90
+
+# --- Anchored VWAP ---
+VWAP_K_STD = 0.35
+
+# --- Liquidation safety ---
+LIQ_BUFFER_PCT = 0.8
+LIQ_BUFFER_ATR_MULT = 0.5
+REDUCE_SIZE_IF_LIQ_TOO_CLOSE = True
+SKIP_IF_AFTER_REDUCE_STILL_UNSAFE = True
+
+# --- Sessions ---
+SESSION_BIAS = {"london_ny_tighter": True}
