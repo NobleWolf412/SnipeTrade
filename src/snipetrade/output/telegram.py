@@ -4,6 +4,8 @@ import asyncio
 from typing import List, Optional
 from telegram import Bot
 from telegram.error import TelegramError
+from datetime import datetime
+
 from snipetrade.models import TradeSetup, ScanResult
 
 
@@ -31,33 +33,39 @@ class TelegramNotifier:
             Formatted message string
         """
         # Message header
-        direction_emoji = "🟢" if setup.direction.value == "LONG" else "🔴"
-        message = f"{direction_emoji} *{setup.symbol}* - {setup.direction.value}\n\n"
-        
-        # Score and confidence
+        direction_emoji = "🟢" if setup.direction == "LONG" else "🔴"
+        message = f"{direction_emoji} *{setup.symbol}* - {setup.direction}\n\n"
+
         message += f"📊 Score: *{setup.score:.1f}/100*\n"
         message += f"🎯 Confidence: *{setup.confidence:.1%}*\n"
-        message += f"💰 Entry: *${setup.entry_price:.2f}*\n\n"
-        
-        # Timeframe confluence
+
+        entries = ', '.join(f"${price:.2f}" for price in setup.entry_plan)
+        message += f"💰 Entries: *{entries}*\n"
+        message += f"🛑 Stop Loss: *${setup.stop_loss:.2f}*\n"
+        targets = ', '.join(f"${target:.2f}" for target in setup.take_profits)
+        message += f"🎯 Targets: *{targets}*\n"
+        message += f"⚖️ R:R: *{setup.rr:.2f}*\n\n"
+
         if setup.timeframe_confluence:
             message += "⏰ *Timeframe Confluence:*\n"
             for tf, direction in setup.timeframe_confluence.items():
                 tf_emoji = "✅" if direction == setup.direction else "⚠️"
-                message += f"  {tf_emoji} {tf}: {direction.value}\n"
+                message += f"  {tf_emoji} {tf}: {direction}\n"
             message += "\n"
-        
-        # Top indicators
-        strong_signals = sorted(
-            [s for s in setup.indicator_signals if s.strength > 0.5],
-            key=lambda x: x.strength,
-            reverse=True
-        )[:3]
-        
-        if strong_signals:
+
+        significant_signals = [
+            s for s in setup.indicator_summaries if s.get('strength', 0) > 0.5
+        ]
+        if significant_signals:
             message += "📈 *Key Indicators:*\n"
-            for signal in strong_signals:
-                message += f"  • {signal.name} ({signal.timeframe}): {signal.signal.value}\n"
+            for signal in significant_signals[:3]:
+                message += (
+                    f"  • {signal['name']} ({signal['timeframe']}): "
+                    f"{signal['signal']}"
+                )
+                if signal.get('strength') is not None:
+                    message += f" [{signal['strength']:.2f}]"
+                message += "\n"
             message += "\n"
         
         # Reasons
@@ -68,6 +76,9 @@ class TelegramNotifier:
         
         # Exchange
         message += f"\n🏦 Exchange: {setup.exchange}"
+
+        timestamp = datetime.utcfromtimestamp(setup.time_ms / 1000)
+        message += f"\n🕒 Time: {timestamp.strftime('%Y-%m-%d %H:%M:%S UTC')}"
         
         return message
 
@@ -84,12 +95,13 @@ class TelegramNotifier:
         message += f"🔍 Pairs Scanned: {scan_result.total_pairs_scanned}\n"
         message += f"✨ Setups Found: {scan_result.total_setups_found}\n"
         message += f"🏦 Exchange: {scan_result.exchange}\n"
-        message += f"🕐 Time: {scan_result.timestamp.strftime('%Y-%m-%d %H:%M:%S UTC')}\n\n"
-        
-        if scan_result.top_setups:
+        timestamp = datetime.utcfromtimestamp(scan_result.timestamp_ms / 1000)
+        message += f"🕐 Time: {timestamp.strftime('%Y-%m-%d %H:%M:%S UTC')}\n\n"
+
+        if scan_result.setups:
             message += "*Top Opportunities:*\n"
-            for i, setup in enumerate(scan_result.top_setups[:5], 1):
-                direction_emoji = "🟢" if setup.direction.value == "LONG" else "🔴"
+            for i, setup in enumerate(scan_result.setups[:5], 1):
+                direction_emoji = "🟢" if setup.direction == "LONG" else "🔴"
                 message += f"{i}. {direction_emoji} {setup.symbol} - {setup.score:.1f}\n"
         
         return message

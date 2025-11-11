@@ -34,6 +34,12 @@
 
 Coverage across all critical paths.
 
+### ✅ Offline Backtest Harness
+
+- `tools/snp_backtest.py` replays cached Phemex candles (15m/1h/4h) for
+  BTC/USDT and ETH/USDT, invokes the scoring engine, and prints both JSON
+  payloads and Telegram-formatted alerts for air-gapped validation.
+
 ### ✅ Professional Documentation
 
 1. **README.md** - Complete usage guide with examples
@@ -167,7 +173,7 @@ Clean interfaces:
 scanner = TradeScanner(config)
 result = scanner.scan(progress_callback=ui_updater)
 
-for setup in result.top_setups:
+for setup in result.setups:
     display_in_ui(setup)
 ```
 

@@ -1,5 +1,5 @@
 {
-  "exchange": "binance",
+  "exchange": "phemex",
   "exchange_config": {
     "apiKey": "YOUR_API_KEY_HERE",
     "secret": "YOUR_API_SECRET_HERE",
@@ -16,5 +16,9 @@
   "telegram_bot_token": "YOUR_TELEGRAM_BOT_TOKEN",
   "telegram_chat_id": "YOUR_TELEGRAM_CHAT_ID",
   "enable_audit": true,
-  "audit_dir": "./audit_logs"
+  "audit_dir": "./audit_logs",
+  "markets_ttl_ms": 180000,
+  "ohlcv_cache_ttl_ms": 60000,
+  "fast_timeframe_ttl_ms": 600000,
+  "slow_timeframe_ttl_ms": 1800000
 }
