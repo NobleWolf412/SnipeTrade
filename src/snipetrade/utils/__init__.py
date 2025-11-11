@@ -7,4 +7,3 @@ __all__ = [
     "normalize_symbol_for_exchange",
     "parse_tf_to_ms",
 ]
-

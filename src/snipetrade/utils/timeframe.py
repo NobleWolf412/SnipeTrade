@@ -35,4 +35,3 @@ def parse_tf_to_ms(timeframe: str) -> int:
 
     minutes = quantity * _UNIT_TO_MINUTES[unit]
     return int(minutes * 60 * 1000)
-
