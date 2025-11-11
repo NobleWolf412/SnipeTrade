@@ -154,23 +154,27 @@ Each scan produces a JSON file with the following structure:
 ```json
 {
   "scan_id": "uuid-here",
-  "timestamp": "2024-01-01T00:00:00",
+  "timestamp_ms": 1704067200000,
   "exchange": "binance",
   "total_pairs_scanned": 50,
   "total_setups_found": 5,
-  "top_setups": [
+  "setups": [
     {
       "symbol": "BTC/USDT",
       "direction": "LONG",
       "score": 75.5,
       "confidence": 0.82,
-      "entry_price": 50000.0,
+      "entry_plan": [50000.0],
+      "stop_loss": 48500.0,
+      "take_profits": [51000.0, 52000.0],
+      "rr": 2.0,
+      "time_ms": 1704067200000,
       "timeframe_confluence": {
         "15m": "LONG",
         "1h": "LONG",
         "4h": "LONG"
       },
-      "indicator_signals": [...],
+      "indicator_summaries": [...],
       "liquidation_zones": [...],
       "reasons": [
         "RSI shows LONG signal (strength: 0.80) on 1h",
@@ -235,7 +239,7 @@ scanner = TradeScanner(config)
 result: ScanResult = scanner.scan()
 
 # Access results
-for setup in result.top_setups:
+for setup in result.setups:
     print(f"{setup.symbol}: {setup.score}")
 ```
 
