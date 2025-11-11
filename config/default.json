@@ -1,0 +1,14 @@
+{
+  "exchange": "binance",
+  "exchange_config": {},
+  "exclude_stablecoins": true,
+  "custom_exclude": [],
+  "timeframes": ["15m", "1h", "4h"],
+  "min_score": 50.0,
+  "max_pairs": 50,
+  "max_workers": 5,
+  "top_setups_limit": 10,
+  "json_output_dir": "./output",
+  "enable_audit": true,
+  "audit_dir": "./audit_logs"
+}
