@@ -143,3 +143,32 @@ class TestQualityGates:
         decision = gates.evaluate([make_candidate()])[0]
         assert 0 < len(decision.reasons) <= 5
         assert all(decision.reasons)
+
+    def test_phemex_gate_only_for_phemex_exchange(self):
+        """Test that phemex_listed gate only applies when exchange is Phemex."""
+        # Candidate not listed on Phemex
+        not_listed = make_candidate(phemex_listed=False)
+        
+        # Without exchange specified, should accept (backwards compatible)
+        gates_no_exchange = QualityGates()
+        decisions_no_exchange = gates_no_exchange.evaluate([not_listed])
+        assert len(decisions_no_exchange) == 1  # Should pass
+        
+        # With Phemex exchange, should filter out
+        gates_phemex = QualityGates(exchange="phemex")
+        decisions_phemex = gates_phemex.evaluate([not_listed])
+        assert len(decisions_phemex) == 0  # Should be filtered
+        
+        # With Binance exchange, should accept (phemex_listed check skipped)
+        gates_binance = QualityGates(exchange="binance")
+        decisions_binance = gates_binance.evaluate([not_listed])
+        assert len(decisions_binance) == 1  # Should pass
+        
+    def test_phemex_listed_true_passes_all_exchanges(self):
+        """Test that candidates with phemex_listed=True pass for all exchanges."""
+        listed = make_candidate(phemex_listed=True)
+        
+        for exchange in [None, "phemex", "binance", "bybit"]:
+            gates = QualityGates(exchange=exchange)
+            decisions = gates.evaluate([listed])
+            assert len(decisions) == 1, f"Failed for exchange={exchange}"

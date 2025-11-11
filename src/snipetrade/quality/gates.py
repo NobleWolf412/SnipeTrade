@@ -83,8 +83,9 @@ class GateDecision:
 class QualityGates:
     """Evaluate trade setup candidates against hard and soft gates."""
 
-    def __init__(self, config: Optional[QualityGatesConfig] = None):
+    def __init__(self, config: Optional[QualityGatesConfig] = None, exchange: Optional[str] = None):
         self.config = config or QualityGatesConfig()
+        self.exchange = exchange
 
     # ------------------------------------------------------------------
     # Hard gate helpers
@@ -242,8 +243,10 @@ class QualityGates:
         approved: List[GateDecision] = []
 
         for candidate in candidates:
-            if not candidate.phemex_listed:
-                continue
+            # Only check phemex_listed if exchange is Phemex
+            if self.exchange and self.exchange.lower() == "phemex":
+                if not candidate.phemex_listed:
+                    continue
 
             rr = self.compute_rr(candidate.entry_near, candidate.entry_stop, candidate.entry_tp1, candidate.direction)
             if rr < self.config.min_rr:
