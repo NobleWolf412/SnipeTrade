@@ -1,0 +1,2 @@
+# SnipeTrade
+Crypto Scanner
