@@ -105,7 +105,7 @@ result: ScanResult = scanner.scan()
 # 3. Access results
 print(f"Found {result.total_setups_found} setups")
 
-for setup in result.top_setups:
+for setup in result.setups:
     print(f"{setup.symbol}: {setup.score:.1f}")
 ```
 
@@ -133,7 +133,7 @@ result = scanner.scan(progress_callback=tracker.on_progress)
 ```python
 {
     # Exchange settings
-    "exchange": "binance",  # or "bybit"
+    "exchange": "phemex",  # or "binance"/"bybit"
     "exchange_config": {
         "apiKey": "...",
         "secret": "...",
@@ -153,6 +153,12 @@ result = scanner.scan(progress_callback=tracker.on_progress)
     "json_output_dir": "./output",
     "enable_audit": true,
     "audit_dir": "./audit_logs",
+
+    # Market data caching
+    "markets_ttl_ms": 300000,
+    "ohlcv_cache_ttl_ms": 120000,
+    "fast_timeframe_ttl_ms": 900000,
+    "slow_timeframe_ttl_ms": 3600000,
     
     # Telegram
     "telegram_bot_token": "...",
@@ -174,13 +180,23 @@ All config values can be set via environment variables:
 
 ```bash
 # Exchange
-EXCHANGE=binance
+EXCHANGE=phemex
 BINANCE_API_KEY=...
 BINANCE_API_SECRET=...
+BYBIT_API_KEY=...
+BYBIT_API_SECRET=...
+PHEMEX_API_KEY=...
+PHEMEX_API_SECRET=...
 
 # Scanning
 MAX_PAIRS=50
 MIN_SCORE_THRESHOLD=60.0
+
+# Market data caching
+MARKETS_TTL_MS=300000
+OHLCV_CACHE_TTL_MS=120000
+FAST_TF_TTL=900000
+SLOW_TF_TTL=3600000
 
 # Telegram
 TELEGRAM_BOT_TOKEN=...
@@ -201,19 +217,20 @@ All models use Pydantic for validation and serialization.
 Represents a complete trade setup with analysis.
 
 ```python
-from snipetrade.models import TradeSetup, TradeDirection
+from snipetrade.models import TradeSetup
 
 setup = TradeSetup(
     symbol='BTC/USDT',
     exchange='binance',
-    direction=TradeDirection.LONG,
+    direction='LONG',
     score=75.5,
     confidence=0.82,
-    entry_price=50000.0,
-    suggested_stop_loss=49000.0,
-    suggested_take_profit=52000.0,
-    timeframe_confluence={'15m': TradeDirection.LONG, '1h': TradeDirection.LONG},
-    indicator_signals=[...],
+    entry_plan=[50000.0, 49750.0],
+    stop_loss=48500.0,
+    take_profits=[51000.0, 52000.0],
+    rr=2.0,
+    timeframe_confluence={'15m': 'LONG', '1h': 'LONG'},
+    indicator_summaries=[...],
     liquidation_zones=[...],
     reasons=['RSI oversold', 'Timeframe confluence'],
     metadata={'custom': 'data'}
@@ -224,7 +241,7 @@ json_dict = setup.model_dump(mode='json')
 
 # Access fields
 print(setup.symbol)
-print(setup.direction.value)  # "LONG" or "SHORT"
+print(setup.direction)  # "LONG" or "SHORT"
 print(setup.score)
 ```
 
@@ -232,12 +249,15 @@ print(setup.score)
 
 - `symbol`: Trading pair (e.g., "BTC/USDT")
 - `exchange`: Exchange name
-- `direction`: TradeDirection.LONG or TradeDirection.SHORT
+- `direction`: "LONG" or "SHORT"
 - `score`: Overall score (0-100)
 - `confidence`: Confidence level (0.0-1.0)
-- `entry_price`: Suggested entry price
+- `entry_plan`: List of entry price levels
+- `stop_loss`: Protective stop price
+- `take_profits`: List of take-profit targets
+- `rr`: Risk-to-reward ratio
 - `timeframe_confluence`: Dict of timeframe alignments
-- `indicator_signals`: List of IndicatorSignal objects
+- `indicator_summaries`: List of summarized indicator readings
 - `reasons`: List of human-readable reasons
 
 ### ScanResult
@@ -252,7 +272,7 @@ result = ScanResult(
     exchange='binance',
     total_pairs_scanned=50,
     total_setups_found=5,
-    top_setups=[setup1, setup2, ...],
+    setups=[setup1, setup2, ...],
     metadata={'config': {...}}
 )
 
@@ -260,7 +280,7 @@ result = ScanResult(
 print(f"Scanned {result.total_pairs_scanned} pairs")
 print(f"Found {result.total_setups_found} setups")
 
-for setup in result.top_setups:
+for setup in result.setups:
     print(f"{setup.symbol}: {setup.score}")
 ```
 
@@ -391,11 +411,14 @@ class ScannerGUI:
         
         # Display results
         self.results_text.insert(tk.END, f"Found {result.total_setups_found} setups\n\n")
-        for setup in result.top_setups:
-            self.results_text.insert(tk.END, 
-                f"{setup.symbol} - {setup.direction.value}\n"
+        for setup in result.setups:
+            entries = ', '.join(f"${price:.2f}" for price in setup.entry_plan)
+            targets = ', '.join(f"${tp:.2f}" for tp in setup.take_profits)
+            self.results_text.insert(tk.END,
+                f"{setup.symbol} - {setup.direction}\n"
                 f"  Score: {setup.score:.1f}\n"
-                f"  Entry: ${setup.entry_price:.2f}\n\n"
+                f"  Entries: {entries}\n"
+                f"  Stop: ${setup.stop_loss:.2f} | Targets: {targets}\n\n"
             )
         
         self.btn['state'] = 'normal'
@@ -475,7 +498,7 @@ def start_scan():
     return jsonify({
         'scan_id': result.scan_id,
         'total_found': result.total_setups_found,
-        'setups': [s.model_dump(mode='json') for s in result.top_setups]
+        'setups': [s.model_dump(mode='json') for s in result.setups]
     })
 
 @app.route('/api/status')

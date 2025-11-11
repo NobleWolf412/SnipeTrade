@@ -3,7 +3,7 @@
 import pytest
 from datetime import datetime, timedelta
 from snipetrade.scoring.confluence import ConfluenceScorer
-from snipetrade.models import MarketData, TradeDirection, IndicatorSignal
+from snipetrade.models import MarketData, TradeDirection, IndicatorSignal, LiquidationData
 
 
 def create_market_data(num_candles: int = 100, base_price: float = 100.0) -> list:
@@ -151,7 +151,7 @@ class TestConfluenceScorer:
         if setup:  # May be None if no clear signal
             assert setup.symbol == 'BTC/USDT'
             assert setup.exchange == 'binance'
-            assert setup.direction in [TradeDirection.LONG, TradeDirection.SHORT]
+            assert setup.direction in ['LONG', 'SHORT']
             assert setup.score >= 0.0 and setup.score <= 100.0
             assert setup.confidence >= 0.0 and setup.confidence <= 1.0
             assert len(setup.reasons) > 0
@@ -160,27 +160,19 @@ class TestConfluenceScorer:
         """Test reason generation"""
         scorer = ConfluenceScorer()
         
-        from snipetrade.models import TradeSetup, LiquidationData
-        
-        setup = TradeSetup(
-            symbol='BTC/USDT',
-            exchange='binance',
-            direction=TradeDirection.LONG,
+        reasons = scorer.generate_reasons(
             score=75.0,
-            confidence=0.8,
-            entry_price=100.0,
-            timeframe_confluence={'15m': TradeDirection.LONG, '1h': TradeDirection.LONG},
+            direction=TradeDirection.LONG,
             indicator_signals=[
-                IndicatorSignal(name="RSI", value=25.0, signal=TradeDirection.LONG, 
+                IndicatorSignal(name="RSI", value=25.0, signal=TradeDirection.LONG,
                                strength=0.8, timeframe="1h"),
             ],
+            timeframe_confluence={'15m': TradeDirection.LONG, '1h': TradeDirection.LONG},
             liquidation_zones=[
-                LiquidationData(symbol='BTC/USDT', price_level=95.0, 
+                LiquidationData(symbol='BTC/USDT', price_level=95.0,
                                liquidation_amount=1000000, direction=TradeDirection.LONG,
                                significance=0.8)
             ]
         )
-        
-        reasons = scorer.generate_reasons(setup)
         assert len(reasons) > 0
         assert any('RSI' in reason for reason in reasons)

@@ -54,22 +54,19 @@ def demo_basic_scan():
         print(f"Pairs Scanned: {result.total_pairs_scanned}")
         print(f"Setups Found: {result.total_setups_found}")
         
-        if result.top_setups:
-            print(f"\nTop {len(result.top_setups)} Trade Setups:")
+        if result.setups:
+            print(f"\nTop {len(result.setups)} Trade Setups:")
             print("-" * 70)
-            
-            for i, setup in enumerate(result.top_setups, 1):
-                print(f"\n{i}. {setup.symbol} - {setup.direction.value}")
+
+            for i, setup in enumerate(result.setups, 1):
+                print(f"\n{i}. {setup.symbol} - {setup.direction}")
                 print(f"   Score: {setup.score:.1f}/100")
                 print(f"   Confidence: {setup.confidence:.1%}")
-                print(f"   Entry Price: ${setup.entry_price:.2f}")
-                
-                if setup.timeframe_confluence:
-                    aligned = [tf for tf, d in setup.timeframe_confluence.items() 
-                              if d == setup.direction]
-                    if aligned:
-                        print(f"   Timeframe Alignment: {', '.join(aligned)}")
-                
+                entries = ', '.join(f"${price:.2f}" for price in setup.entry_plan)
+                print(f"   Entry Plan: {entries}")
+                print(f"   Stop Loss: ${setup.stop_loss:.2f}")
+                print(f"   Targets: {', '.join(f'${tp:.2f}' for tp in setup.take_profits)}")
+
                 if setup.reasons:
                     print(f"   Top Reason: {setup.reasons[0][:80]}...")
         else:
@@ -123,29 +120,31 @@ def demo_output_formats():
     print("DEMO: Output Formats")
     print("=" * 70)
     
-    from snipetrade.models import TradeSetup, TradeDirection, IndicatorSignal
+    from snipetrade.models import TradeSetup
     
     # Create sample trade setup
     setup = TradeSetup(
         symbol='BTC/USDT',
         exchange='binance',
-        direction=TradeDirection.LONG,
+        direction='LONG',
         score=75.5,
         confidence=0.82,
-        entry_price=50000.0,
-        timeframe_confluence={'15m': TradeDirection.LONG, '1h': TradeDirection.LONG},
-        indicator_signals=[
-            IndicatorSignal(
-                name='RSI',
-                value=28.5,
-                signal=TradeDirection.LONG,
-                strength=0.8,
-                timeframe='1h'
-            )
+        entry_plan=[50000.0],
+        stop_loss=48500.0,
+        take_profits=[51000.0, 52000.0],
+        rr=2.0,
+        timeframe_confluence={'15m': 'LONG', '1h': 'LONG'},
+        indicator_summaries=[
+            {
+                'name': 'RSI',
+                'signal': 'LONG',
+                'strength': 0.8,
+                'timeframe': '1h',
+                'value': 28.5,
+            }
         ],
         reasons=['RSI shows strong LONG signal', 'Multi-timeframe confluence']
     )
-    
     # JSON Output
     print("\n1. JSON Output:")
     print("-" * 70)
