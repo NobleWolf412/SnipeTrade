@@ -6,15 +6,15 @@ from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from snipetrade.models import ScanResult, TradeSetup, Timeframe, MarketData, OHLCVTuple
-from snipetrade.adapters import CcxtAdapter, DEFAULT_EXCHANGE
+from snipetrade.exchanges import CcxtAdapter, DEFAULT_EXCHANGE
+from snipetrade.indicators import normalize_timeframes
+from snipetrade.exchanges.phemex_checker import is_pair_on_phemex
 from snipetrade.filters.pair_filter import PairFilter
 from snipetrade.scoring.confluence import ConfluenceScorer
 from snipetrade.output.json_formatter import JSONFormatter
 from snipetrade.output.telegram import TelegramNotifier
 from snipetrade.output.audit import AuditLogger
 from snipetrade.utils.cache import TTLCache
-from snipetrade.utils.timeframes import normalize_timeframes
-from snipetrade.utils import phemex_checker
 
 if TYPE_CHECKING:
     from snipetrade.config import Config
@@ -123,7 +123,7 @@ class TradeScanner:
         """
         try:
             # Ensure pair is tradable on the target exchange (Phemex specific)
-            if not phemex_checker.is_pair_on_phemex(symbol, self.exchange):
+            if not is_pair_on_phemex(symbol, self.exchange):
                 return None
 
             # Fetch multi-timeframe data
