@@ -113,11 +113,26 @@ class Config:
             'json_output_dir': self._get('JSON_OUTPUT_DIR', './output'),
             'enable_audit': self._get_bool('ENABLE_AUDIT', True),
             'audit_dir': self._get('AUDIT_DIR', './audit_logs'),
-            
+
             # Telegram settings
             'telegram_bot_token': self._get('TELEGRAM_BOT_TOKEN'),
             'telegram_chat_id': self._get('TELEGRAM_CHAT_ID'),
             'enable_notifications': self._get_bool('ENABLE_NOTIFICATIONS', True),
+
+            # Batch run defaults
+            'run_mode': self._get('RUN_MODE', 'batch'),
+            'batch_symbol_set': self._get('BATCH_SYMBOL_SET', 'top20:phemex'),
+            'batch_tfs': self._get_list('BATCH_TFS', ['15m', '1h', '4h']),
+            'batch_limit': self._get_int('BATCH_LIMIT', 10),
+            'batch_min_score': self._get_float('BATCH_MIN_SCORE', 60),
+            'batch_leverage': self._get_float('BATCH_LEVERAGE', 10),
+            'batch_risk_usd': self._get_float('BATCH_RISK_USD', 50.0),
+            'batch_output_formats': self._get_list('BATCH_OUTPUT_FORMATS', ['json', 'csv', 'md']),
+            'batch_output_dir': self._get('BATCH_OUTPUT_DIR', 'out'),
+            'telegram_enabled': self._get_bool('TELEGRAM_ENABLED', True),
+            'telegram_batch_summary': self._get_bool('TELEGRAM_BATCH_SUMMARY', True),
+            'telegram_max_msgs': self._get_int('TELEGRAM_MAX_MSGS', 12),
+            'telegram_rate_ms': self._get_int('TELEGRAM_RATE_MS', 400),
 
             # Trading settings (for future use)
             'enable_trading': self._get_bool('ENABLE_TRADING', False),
