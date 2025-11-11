@@ -2,8 +2,9 @@
 
 import uuid
 from typing import List, Dict, Optional, Callable, Union
-from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime
+
 from snipetrade.models import ScanResult, TradeSetup, Timeframe
 from snipetrade.exchanges.base import BaseExchange, create_exchange
 from snipetrade.filters.pair_filter import PairFilter
@@ -190,14 +191,14 @@ class TradeScanner:
         
         # Sort setups by score
         setups.sort(key=lambda x: x.score, reverse=True)
-        
-        # Create scan result
+        top_setups = setups[:self.top_setups_limit]
+
         scan_result = ScanResult(
             scan_id=scan_id,
             exchange=self.exchange.exchange_id,
             total_pairs_scanned=total_pairs,
             total_setups_found=len(setups),
-            top_setups=setups[:self.top_setups_limit],
+            setups=top_setups,
             metadata={
                 "config": self.config,
                 "timeframes": self.scorer.timeframes
@@ -241,8 +242,8 @@ class TradeScanner:
                     })
                 
                 # Send individual alerts for top setups
-                max_alerts = min(5, len(scan_result.top_setups))
-                for i, setup in enumerate(scan_result.top_setups[:max_alerts], 1):
+                max_alerts = min(5, len(scan_result.setups))
+                for i, setup in enumerate(scan_result.setups[:max_alerts], 1):
                     alert_success = self.telegram.send_setup_alert_sync(setup)
                     if alert_success:
                         print(f"✓ Alert {i}/{max_alerts} sent: {setup.symbol}")
@@ -277,10 +278,11 @@ class TradeScanner:
         print(f"Setups Found: {scan_result.total_setups_found}")
         print(f"\nTop Setups:")
         
-        for i, setup in enumerate(scan_result.top_setups, 1):
-            print(f"\n{i}. {setup.symbol} - {setup.direction.value}")
+        for i, setup in enumerate(scan_result.setups, 1):
+            print(f"\n{i}. {setup.symbol} - {setup.direction}")
             print(f"   Score: {setup.score:.1f}/100 | Confidence: {setup.confidence:.1%}")
-            print(f"   Entry: ${setup.entry_price:.2f}")
+            entry_values = ', '.join(f"${price:.2f}" for price in setup.entry_plan)
+            print(f"   Entry Plan: {entry_values}")
             if setup.reasons:
                 print(f"   Reason: {setup.reasons[0]}")
         
