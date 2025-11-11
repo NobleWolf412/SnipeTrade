@@ -59,11 +59,13 @@ Edit the configuration file to set your preferences:
 
 ```json
 {
-  "exchange": "binance",
+  "exchange": "phemex",
   "exclude_stablecoins": true,
   "timeframes": ["15m", "1h", "4h"],
   "min_score": 50.0,
   "max_pairs": 50,
+  "markets_ttl_ms": 300000,
+  "ohlcv_cache_ttl_ms": 120000,
   "telegram_bot_token": "YOUR_BOT_TOKEN",
   "telegram_chat_id": "YOUR_CHAT_ID"
 }
@@ -88,7 +90,7 @@ snipetrade scan --exchange bybit --max-pairs 30 --min-score 60
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `exchange` | string | "binance" | Exchange to scan (binance, bybit) |
+| `exchange` | string | "phemex" | Exchange to scan (phemex, binance, bybit) |
 | `exclude_stablecoins` | boolean | true | Exclude stablecoin-to-stablecoin pairs |
 | `custom_exclude` | array | [] | Custom symbols to exclude |
 | `timeframes` | array | ["15m", "1h", "4h"] | Timeframes for analysis |
@@ -104,6 +106,15 @@ snipetrade scan --exchange bybit --max-pairs 30 --min-score 60
 | `json_output_dir` | string | "./output" | Directory for JSON output files |
 | `enable_audit` | boolean | true | Enable audit logging |
 | `audit_dir` | string | "./audit_logs" | Directory for audit logs |
+
+### Market Data Caching
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `markets_ttl_ms` | integer | 300000 | Cache lifetime (ms) for the exchange markets list |
+| `ohlcv_cache_ttl_ms` | integer | 120000 | Cache lifetime (ms) for raw OHLCV responses |
+| `fast_timeframe_ttl_ms` | integer | 900000 | Cache TTL (ms) for fast timeframes (≤15m) |
+| `slow_timeframe_ttl_ms` | integer | 3600000 | Cache TTL (ms) for slow timeframes (≥1h) |
 
 ### Telegram Configuration
 
@@ -154,23 +165,27 @@ Each scan produces a JSON file with the following structure:
 ```json
 {
   "scan_id": "uuid-here",
-  "timestamp": "2024-01-01T00:00:00",
+  "timestamp_ms": 1704067200000,
   "exchange": "binance",
   "total_pairs_scanned": 50,
   "total_setups_found": 5,
-  "top_setups": [
+  "setups": [
     {
       "symbol": "BTC/USDT",
       "direction": "LONG",
       "score": 75.5,
       "confidence": 0.82,
-      "entry_price": 50000.0,
+      "entry_plan": [50000.0],
+      "stop_loss": 48500.0,
+      "take_profits": [51000.0, 52000.0],
+      "rr": 2.0,
+      "time_ms": 1704067200000,
       "timeframe_confluence": {
         "15m": "LONG",
         "1h": "LONG",
         "4h": "LONG"
       },
-      "indicator_signals": [...],
+      "indicator_summaries": [...],
       "liquidation_zones": [...],
       "reasons": [
         "RSI shows LONG signal (strength: 0.80) on 1h",
@@ -225,7 +240,7 @@ from snipetrade.models import ScanResult
 
 # Initialize scanner
 config = {
-    "exchange": "binance",
+    "exchange": "phemex",
     "max_pairs": 50,
     "min_score": 60.0
 }
@@ -235,7 +250,7 @@ scanner = TradeScanner(config)
 result: ScanResult = scanner.scan()
 
 # Access results
-for setup in result.top_setups:
+for setup in result.setups:
     print(f"{setup.symbol}: {setup.score}")
 ```
 

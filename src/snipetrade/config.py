@@ -6,8 +6,19 @@ from pathlib import Path
 from typing import Dict, Any, Optional
 from dotenv import load_dotenv
 
-from snipetrade.adapters import DEFAULT_EXCHANGE
-from snipetrade.adapters.ccxt_adapter import CcxtAdapter
+# Cache configuration defaults exposed at module level for easy reuse
+DEFAULT_OHLCV_CACHE_DIR = Path(".cache") / "ohlcv"
+OHLCV_CACHE_DIR = Path(os.getenv("OHLCV_CACHE_DIR", str(DEFAULT_OHLCV_CACHE_DIR)))
+OHLCV_CACHE_TTL_MS = int(os.getenv("OHLCV_CACHE_TTL_MS", "300000"))
+OHLCV_CACHE_FORMAT = os.getenv("OHLCV_CACHE_FORMAT", "parquet").lower()
+
+
+DEFAULT_EXCHANGE = "phemex"
+DEFAULT_TIMEFRAMES = ["15m", "1h", "4h"]
+MARKETS_TTL_MS = 5 * 60 * 1000  # 5 minutes
+OHLCV_CACHE_TTL_MS = 2 * 60 * 1000  # 2 minutes
+FAST_TF_TTL = 15 * 60 * 1000  # 15 minutes
+SLOW_TF_TTL = 60 * 60 * 1000  # 1 hour
 
 
 class Config:
@@ -42,15 +53,29 @@ class Config:
         
         Priority: ENV vars > JSON config > Defaults
         """
+        markets_ttl_ms = self._get_int('MARKETS_TTL_MS', MARKETS_TTL_MS)
+        ohlcv_cache_ttl_ms = self._get_int('OHLCV_CACHE_TTL_MS', OHLCV_CACHE_TTL_MS)
+        fast_timeframe_ttl_ms = self._get_int('FAST_TF_TTL', FAST_TF_TTL)
+        slow_timeframe_ttl_ms = self._get_int('SLOW_TF_TTL', SLOW_TF_TTL)
+
         config = {
             # Exchange settings
             'exchange': self._get('EXCHANGE', DEFAULT_EXCHANGE),
-            'exchange_config': self._get_exchange_config(),
-            
+            'exchange_config': self._get_exchange_config(
+                markets_ttl_ms=markets_ttl_ms,
+                ohlcv_cache_ttl_ms=ohlcv_cache_ttl_ms,
+                fast_timeframe_ttl_ms=fast_timeframe_ttl_ms,
+                slow_timeframe_ttl_ms=slow_timeframe_ttl_ms,
+            ),
+            'markets_ttl_ms': markets_ttl_ms,
+            'ohlcv_cache_ttl_ms': ohlcv_cache_ttl_ms,
+            'fast_timeframe_ttl_ms': fast_timeframe_ttl_ms,
+            'slow_timeframe_ttl_ms': slow_timeframe_ttl_ms,
+
             # Scanning settings
             'exclude_stablecoins': self._get_bool('EXCLUDE_STABLECOINS', True),
             'custom_exclude': self._get_list('CUSTOM_EXCLUDE', []),
-            'timeframes': self._get_list('TIMEFRAMES', ['15m', '1h', '4h']),
+            'timeframes': self._get_list('TIMEFRAMES', DEFAULT_TIMEFRAMES),
             'min_score': self._get_float('MIN_SCORE_THRESHOLD', 50.0),
             'max_pairs': self._get_int('MAX_PAIRS', 50),
             'max_workers': self._get_int('MAX_WORKERS', 5),
@@ -67,25 +92,43 @@ class Config:
             'telegram_bot_token': self._get('TELEGRAM_BOT_TOKEN'),
             'telegram_chat_id': self._get('TELEGRAM_CHAT_ID'),
             'enable_notifications': self._get_bool('ENABLE_NOTIFICATIONS', True),
-            
+
             # Trading settings (for future use)
             'enable_trading': self._get_bool('ENABLE_TRADING', False),
             'trading_mode': self._get('TRADING_MODE', 'paper'),  # paper or live
             'max_position_size_usd': self._get_float('MAX_POSITION_SIZE_USD', 1000.0),
             'max_open_positions': self._get_int('MAX_OPEN_POSITIONS', 3),
             'risk_per_trade_percent': self._get_float('RISK_PER_TRADE_PERCENT', 2.0),
+
+            # Data caching
+            'ohlcv_cache_dir': self._get('OHLCV_CACHE_DIR', str(OHLCV_CACHE_DIR)),
+            'ohlcv_cache_ttl_ms': self._get_int('OHLCV_CACHE_TTL_MS', OHLCV_CACHE_TTL_MS),
+            'ohlcv_cache_format': self._get('OHLCV_CACHE_FORMAT', OHLCV_CACHE_FORMAT),
         }
-        
+
         return config
 
-    def _get_exchange_config(self) -> Dict[str, Any]:
+    def _get_exchange_config(
+        self,
+        *,
+        markets_ttl_ms: int,
+        ohlcv_cache_ttl_ms: int,
+        fast_timeframe_ttl_ms: int,
+        slow_timeframe_ttl_ms: int,
+    ) -> Dict[str, Any]:
         """Get exchange-specific configuration including API keys"""
-        exchange = self._get('EXCHANGE', 'binance').lower()
-        
+        exchange = self._get('EXCHANGE', DEFAULT_EXCHANGE).lower()
+
         exchange_config = {
             'enableRateLimit': True,
         }
-        
+
+        # TTL controls for adapters that implement caching
+        exchange_config.setdefault('markets_ttl_ms', markets_ttl_ms)
+        exchange_config.setdefault('ohlcv_cache_ttl_ms', ohlcv_cache_ttl_ms)
+        exchange_config.setdefault('fast_timeframe_ttl_ms', fast_timeframe_ttl_ms)
+        exchange_config.setdefault('slow_timeframe_ttl_ms', slow_timeframe_ttl_ms)
+
         # Add API credentials if available
         if exchange == 'binance':
             api_key = self._get('BINANCE_API_KEY')
@@ -107,17 +150,22 @@ class Config:
             if api_key and api_secret:
                 exchange_config['apiKey'] = api_key
                 exchange_config['secret'] = api_secret
-        
+
         # Merge with JSON config if present
         json_exchange_config = self.json_config.get('exchange_config', {})
         exchange_config.update(json_exchange_config)
-        
+
         return exchange_config
 
     def _get_adapter_cache_ttl(self) -> Dict[str, int]:
         """Return adapter TTL configuration merging defaults with overrides."""
 
-        defaults = dict(CcxtAdapter.DEFAULT_TTLS)
+        # Default TTLs (matches CcxtAdapter.DEFAULT_TTLS)
+        defaults = {
+            "markets": 60 * 60,   # 1 hour
+            "tickers": 30,        # 30 seconds
+            "ohlcv": 60,          # 1 minute
+        }
         json_overrides = self.json_config.get('adapter_cache_ttl', {})
         if isinstance(json_overrides, dict):
             for key in defaults:

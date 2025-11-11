@@ -167,7 +167,7 @@ Clean interfaces:
 scanner = TradeScanner(config)
 result = scanner.scan(progress_callback=ui_updater)
 
-for setup in result.top_setups:
+for setup in result.setups:
     display_in_ui(setup)
 ```
 

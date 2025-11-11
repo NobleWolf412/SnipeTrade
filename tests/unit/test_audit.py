@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 from datetime import datetime
 from snipetrade.output.audit import AuditLogger
-from snipetrade.models import ScanResult, TradeSetup, TradeDirection
+from snipetrade.models import ScanResult, TradeSetup
 
 
 class TestAuditLogger:
@@ -50,7 +50,7 @@ class TestAuditLogger:
             exchange='binance',
             total_pairs_scanned=50,
             total_setups_found=5,
-            top_setups=[]
+            setups=[]
         )
         
         logger = AuditLogger(audit_dir=tmp_path)
@@ -66,10 +66,14 @@ class TestAuditLogger:
         setup = TradeSetup(
             symbol='BTC/USDT',
             exchange='binance',
-            direction=TradeDirection.LONG,
+            direction='LONG',
             score=75.0,
             confidence=0.8,
-            entry_price=50000.0
+            entry_plan=[50000.0],
+            stop_loss=48000.0,
+            take_profits=[52000.0],
+            rr=2.5,
+            reasons=['Auto reason']
         )
         
         logger = AuditLogger(audit_dir=tmp_path)
@@ -85,10 +89,14 @@ class TestAuditLogger:
         setup = TradeSetup(
             symbol='BTC/USDT',
             exchange='binance',
-            direction=TradeDirection.LONG,
+            direction='LONG',
             score=75.0,
             confidence=0.8,
-            entry_price=50000.0
+            entry_plan=[50000.0],
+            stop_loss=48000.0,
+            take_profits=[52000.0],
+            rr=2.5,
+            reasons=['Auto reason']
         )
         
         logger = AuditLogger(audit_dir=tmp_path)
@@ -131,7 +139,7 @@ class TestAuditLogger:
             exchange='binance',
             total_pairs_scanned=50,
             total_setups_found=3,
-            top_setups=[]
+            setups=[]
         ))
         logger.log_error('test_error', 'Error message')
         
