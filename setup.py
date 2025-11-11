@@ -16,6 +16,7 @@ setup(
         "ta>=0.11.0",
         "pydantic>=2.0.0",
         "python-dotenv>=1.0.0",
+        "pyarrow>=12.0.0",
     ],
     extras_require={
         "dev": [

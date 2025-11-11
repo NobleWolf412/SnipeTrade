@@ -68,7 +68,7 @@ class AuditLogger:
             "exchange": scan_result.exchange,
             "total_pairs_scanned": scan_result.total_pairs_scanned,
             "total_setups_found": scan_result.total_setups_found,
-            "top_setup_count": len(scan_result.top_setups)
+            "top_setup_count": len(scan_result.setups)
         })
 
     def log_setup_found(self, setup: TradeSetup) -> None:
@@ -80,7 +80,7 @@ class AuditLogger:
         self.log_event("setup_found", {
             "symbol": setup.symbol,
             "exchange": setup.exchange,
-            "direction": setup.direction.value,
+            "direction": setup.direction,
             "score": setup.score,
             "confidence": setup.confidence
         })
@@ -97,7 +97,7 @@ class AuditLogger:
         level = "INFO" if success else "WARNING"
         self.log_event("alert_sent", {
             "symbol": setup.symbol,
-            "direction": setup.direction.value,
+            "direction": setup.direction,
             "score": setup.score,
             "channel": channel,
             "success": success
