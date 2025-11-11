@@ -5,7 +5,7 @@ from typing import List, Dict, Optional, Callable, Union
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from snipetrade.models import ScanResult, TradeSetup, Timeframe
-from snipetrade.exchanges.base import BaseExchange, create_exchange
+from snipetrade.exchanges import Exchange, create_exchange
 from snipetrade.filters.pair_filter import PairFilter
 from snipetrade.scoring.confluence import ConfluenceScorer
 from snipetrade.output.json_formatter import JSONFormatter
@@ -31,7 +31,7 @@ class TradeScanner:
             self.config = config
         
         # Initialize components
-        self.exchange = create_exchange(
+        self.exchange: Exchange = create_exchange(
             config.get('exchange', 'binance'),
             config.get('exchange_config', {})
         )
