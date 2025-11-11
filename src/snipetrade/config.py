@@ -80,6 +80,32 @@ class Config:
             'max_pairs': self._get_int('MAX_PAIRS', 50),
             'max_workers': self._get_int('MAX_WORKERS', 5),
             'top_setups_limit': self._get_int('TOP_SETUPS_LIMIT', 10),
+
+            # Quality gate defaults
+            'quality_gates': {
+                'min_rr': self._get_float('QUALITY_MIN_RR', 2.0),
+                'entry_distance_pct': (
+                    self._get_float('QUALITY_ENTRY_DISTANCE_MIN', 0.5),
+                    self._get_float('QUALITY_ENTRY_DISTANCE_MAX', 5.0),
+                ),
+                'freshness_half_life_min': self._get_float('QUALITY_FRESHNESS_HALF_LIFE', 30.0),
+                'max_setup_age_min': self._get_float('QUALITY_MAX_SETUP_AGE', 90.0),
+                'min_volume_usd': self._get_float('QUALITY_MIN_VOLUME_USD', 100_000.0),
+                'max_spread_bps': self._get_float('QUALITY_MAX_SPREAD_BPS', 20.0),
+                'min_confluence': self._get_int('QUALITY_MIN_CONFLUENCE', 3),
+                'min_score': self._get_float('QUALITY_MIN_SCORE', 60.0),
+                'max_setups': self._get_int('QUALITY_MAX_SETUPS', 5),
+                'confluence_weights': self.json_config.get('quality_confluence_weights', {
+                    'tf_align': 25,
+                    'ob_quality': 15,
+                    'fvg_presence': 10,
+                    'bos_choch': 15,
+                    'freshness': 10,
+                    'rr_strength': 10,
+                    'atr_sweetspot': 10,
+                    'regime_bias': 5,
+                }),
+            },
             'adapter_cache_ttl': self._get_adapter_cache_ttl(),
             'timeframe_cache_ttl': self._get_int('TIMEFRAME_CACHE_TTL', 300),
             
