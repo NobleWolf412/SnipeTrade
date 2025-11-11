@@ -2,7 +2,7 @@
 
 import pytest
 
-from snipetrade.utils import normalize_symbol, timeframe_to_milliseconds
+from snipetrade.utils.timeframe_symbol import normalize_symbol, timeframe_to_milliseconds
 
 
 @pytest.mark.parametrize(

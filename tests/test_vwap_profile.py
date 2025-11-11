@@ -1,6 +1,6 @@
 import pandas as pd
 
-from snipetrade.features.vwap import anchored_vwap
+from snipetrade.indicators.vwap import anchored_vwap
 from snipetrade.features.volume_profile import hvn_lvn_levels
 
 

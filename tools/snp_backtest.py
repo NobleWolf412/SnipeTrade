@@ -13,7 +13,7 @@ SRC_PATH = PROJECT_ROOT / "src"
 if str(SRC_PATH) not in sys.path:
     sys.path.insert(0, str(SRC_PATH))
 
-from snipetrade.exchanges import CcxtAdapter  # type: ignore  # pylint: disable=wrong-import-position
+from snipetrade.exchanges import OfflineCcxtAdapter  # type: ignore  # pylint: disable=wrong-import-position
 from snipetrade.scoring.confluence import ConfluenceScorer  # type: ignore  # pylint: disable=wrong-import-position
 from snipetrade.output.telegram import TelegramNotifier  # type: ignore  # pylint: disable=wrong-import-position
 
@@ -24,7 +24,7 @@ SAMPLE_TIMEFRAMES: List[str] = ["15m", "1h", "4h"]
 def main() -> None:
     """Load cached OHLCV data, score sample symbols, and emit notifications."""
 
-    adapter = CcxtAdapter(exchange="phemex")
+    adapter = OfflineCcxtAdapter(exchange="phemex")
     scorer = ConfluenceScorer(timeframes=SAMPLE_TIMEFRAMES)
     notifier = TelegramNotifier()
 
