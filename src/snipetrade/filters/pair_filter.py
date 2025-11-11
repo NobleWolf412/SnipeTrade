@@ -1,6 +1,6 @@
 """Pair filtering module to exclude stablecoins and select top pairs"""
 
-from typing import List, Set
+from typing import List, Set, Optional
 
 
 # Common stablecoin symbols
