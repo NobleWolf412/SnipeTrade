@@ -124,8 +124,9 @@ class TradeScanner:
         """
         try:
             # Ensure pair is tradable on the target exchange (Phemex specific)
-            if not is_pair_on_phemex(symbol, self.exchange):
-                return None
+            if self.exchange.exchange_id.lower() == "phemex":
+                if not is_pair_on_phemex(symbol, self.exchange):
+                    return None
 
             # Fetch multi-timeframe data
             timeframe_data = {}

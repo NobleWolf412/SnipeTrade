@@ -16,6 +16,7 @@ __all__ = [
     "OfflineCcxtAdapter",
     "CachedOHLCV",
     "CcxtAdapter",
+    "DEFAULT_EXCHANGE",
     "normalize_symbol_for_exchange",
     "DEFAULT_EXCHANGE",
 ]
