@@ -1,5 +1,6 @@
 """Scoring engine for trade setups using multi-timeframe confluence"""
 
+from datetime import datetime
 from typing import List, Dict, Optional
 from snipetrade.models import (
     MarketData, IndicatorSignal, TradeSetup, TradeDirection, 
@@ -163,144 +164,180 @@ class ConfluenceScorer:
         confidence = min(1.0, score_confidence + signal_bonus + timeframe_bonus)
         return confidence
 
-    def generate_reasons(self, setup: TradeSetup) -> List[str]:
-        """Generate human-readable reasons for a trade setup
-        
-        Args:
-            setup: Trade setup to analyze
-            
-        Returns:
-            List of reason strings
-        """
-        reasons = []
-        
-        # Analyze indicators
-        strong_signals = [s for s in setup.indicator_signals if s.strength > 0.6]
-        if strong_signals:
-            for signal in strong_signals:
-                reasons.append(
-                    f"{signal.name} shows {signal.signal.value} signal "
-                    f"(strength: {signal.strength:.2f}) on {signal.timeframe}"
-                )
-        
-        # Analyze timeframe confluence
+    def generate_reasons(
+        self,
+        score: float,
+        direction: TradeDirection,
+        indicator_signals: List[IndicatorSignal],
+        timeframe_confluence: Dict[str, TradeDirection],
+        liquidation_zones: List[LiquidationData],
+    ) -> List[str]:
+        """Generate human-readable reasons for a trade setup"""
+
+        reasons: List[str] = []
+
+        strong_signals = [s for s in indicator_signals if s.strength > 0.6]
+        for signal in strong_signals[:3]:
+            reasons.append(
+                f"{signal.name} favours {signal.signal.value} on {signal.timeframe}"
+                f" (strength {signal.strength:.2f})"
+            )
+
         aligned_timeframes = [
-            tf for tf, direction in setup.timeframe_confluence.items()
-            if direction == setup.direction
+            tf for tf, tf_direction in timeframe_confluence.items()
+            if tf_direction == direction
         ]
         if len(aligned_timeframes) >= 2:
             reasons.append(
-                f"Multi-timeframe confluence across {', '.join(aligned_timeframes)}"
+                f"Multi-timeframe alignment: {', '.join(aligned_timeframes[:4])}"
             )
-        
-        # Analyze liquidation zones
-        significant_zones = [z for z in setup.liquidation_zones if z.significance > 0.6]
+
+        significant_zones = [z for z in liquidation_zones if z.significance > 0.6]
         if significant_zones:
             reasons.append(
-                f"Significant liquidation support at {len(significant_zones)} price level(s)"
+                f"{len(significant_zones)} supportive liquidation zone(s)"
             )
-        
-        # Overall score
-        if setup.score >= 70:
-            reasons.append(f"Strong setup with high confidence score ({setup.score:.1f}/100)")
-        elif setup.score >= 50:
-            reasons.append(f"Moderate setup with decent score ({setup.score:.1f}/100)")
-        
+
+        if score >= 70:
+            reasons.append(f"High composite score {score:.1f}/100")
+        elif score >= 50:
+            reasons.append(f"Moderate composite score {score:.1f}/100")
+
         return reasons
 
-    def score_setup(self, symbol: str, exchange: str, 
+    def score_setup(self, symbol: str, exchange: str,
                      timeframe_data: Dict[str, List[MarketData]],
                      current_price: float) -> Optional[TradeSetup]:
-        """Score a complete trade setup
-        
+        """Score a complete trade setup.
+
         Args:
             symbol: Trading pair symbol
             exchange: Exchange name
             timeframe_data: Dict mapping timeframe to market data
             current_price: Current market price
-            
+
         Returns:
             Scored TradeSetup or None if insufficient data
         """
-        all_signals = []
-        timeframe_directions = {}
-        
-        # Calculate indicators for each timeframe
+        all_signals: List[IndicatorSignal] = []
+        timeframe_directions: Dict[str, TradeDirection] = {}
+
         for timeframe, market_data in timeframe_data.items():
             if len(market_data) < 50:
                 continue
-            
+
             signals = self.indicator_calculator.calculate_all_indicators(market_data)
-            
-            # Update signals with timeframe
             for signal in signals:
                 signal.timeframe = timeframe
-            
+
             all_signals.extend(signals)
-            
-            # Determine dominant direction for this timeframe
+
             if signals:
                 timeframe_directions[timeframe] = self.determine_dominant_direction(signals)
-        
+
         if not all_signals:
             return None
-        
-        # Determine overall direction
+
         overall_direction = self.determine_dominant_direction(all_signals)
-        
         if overall_direction == TradeDirection.NEUTRAL:
             return None
-        
-        # Get liquidation data
+
         liquidation_zones = self.liquidation_heatmap.get_liquidation_levels(
             symbol, current_price
         )
-        
-        # Calculate component scores
+
         indicator_score = self.calculate_indicator_score(all_signals)
         confluence_score = self.calculate_timeframe_confluence(timeframe_directions)
         liquidation_score = self.calculate_liquidation_score(liquidation_zones, overall_direction)
-        
-        # Calculate trend strength (based on signal strengths)
+
         avg_strength = sum(s.strength for s in all_signals) / len(all_signals)
         trend_score = avg_strength * 100
-        
-        # Calculate weighted total score
+
         total_score = (
             indicator_score * self.weights['indicator_alignment'] +
             confluence_score * self.weights['timeframe_confluence'] +
             liquidation_score * self.weights['liquidation_support'] +
             trend_score * self.weights['trend_strength']
         )
-        
-        # Calculate confidence
+
         num_aligned_timeframes = len([
             d for d in timeframe_directions.values() if d == overall_direction
         ])
         confidence = self.calculate_confidence(
             total_score, len(all_signals), num_aligned_timeframes
         )
-        
-        # Create trade setup
-        setup = TradeSetup(
+
+        if overall_direction == TradeDirection.LONG:
+            stop_loss = current_price * 0.98
+            take_profits = [current_price * 1.02, current_price * 1.04]
+            risk = current_price - stop_loss
+            reward = take_profits[0] - current_price
+        else:
+            stop_loss = current_price * 1.02
+            take_profits = [current_price * 0.98, current_price * 0.96]
+            risk = stop_loss - current_price
+            reward = current_price - take_profits[0]
+
+        rr = reward / risk if risk > 0 else 0.0
+
+        reasons = self.generate_reasons(
+            score=total_score,
+            direction=overall_direction,
+            indicator_signals=all_signals,
+            timeframe_confluence=timeframe_directions,
+            liquidation_zones=liquidation_zones,
+        )
+
+        if not reasons:
+            reasons = [
+                f"{overall_direction.value} setup detected at {datetime.utcnow().isoformat()}"
+            ]
+
+        timeframe_summary = {
+            tf: tf_direction.value for tf, tf_direction in timeframe_directions.items()
+        }
+
+        indicator_summary = [
+            {
+                'name': signal.name,
+                'signal': signal.signal.value,
+                'strength': signal.strength,
+                'timeframe': signal.timeframe,
+                'value': signal.value,
+            }
+            for signal in all_signals
+        ]
+
+        liquidation_summary = [
+            {
+                'price_level': zone.price_level,
+                'liquidation_amount': zone.liquidation_amount,
+                'direction': zone.direction.value,
+                'significance': zone.significance,
+            }
+            for zone in liquidation_zones
+        ]
+
+        return TradeSetup(
             symbol=symbol,
             exchange=exchange,
-            direction=overall_direction,
+            direction=overall_direction.value,
             score=total_score,
             confidence=confidence,
-            entry_price=current_price,
-            timeframe_confluence=timeframe_directions,
-            indicator_signals=all_signals,
-            liquidation_zones=liquidation_zones,
+            entry_plan=[current_price],
+            stop_loss=stop_loss,
+            take_profits=take_profits,
+            rr=rr if rr > 0 else 0.01,
+            reasons=reasons,
+            timeframe_confluence=timeframe_summary,
+            indicator_summaries=indicator_summary,
+            liquidation_zones=liquidation_summary,
             metadata={
                 'indicator_score': indicator_score,
                 'confluence_score': confluence_score,
                 'liquidation_score': liquidation_score,
-                'trend_score': trend_score
-            }
+                'trend_score': trend_score,
+                'aligned_timeframes': num_aligned_timeframes,
+                'signal_count': len(all_signals),
+            },
         )
-        
-        # Generate reasons
-        setup.reasons = self.generate_reasons(setup)
-        
-        return setup

@@ -118,7 +118,7 @@ You'll receive messages in this format:
   • RSI shows LONG signal (strength: 0.80) on 1h
   • Multi-timeframe confluence across 15m, 1h, 4h
 
-🏦 Exchange: binance
+🏦 Exchange: phemex
 ```
 
 ## Customizing Alerts
