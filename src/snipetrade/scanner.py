@@ -7,7 +7,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from snipetrade.models import ScanResult, TradeSetup, Timeframe, MarketData, OHLCVTuple
 from snipetrade.exchanges import CcxtAdapter, DEFAULT_EXCHANGE
-from snipetrade.indicators import normalize_timeframes
+from snipetrade.utils.timeframes import normalize_timeframes
 from snipetrade.exchanges.phemex_checker import is_pair_on_phemex
 from snipetrade.filters.pair_filter import PairFilter
 from snipetrade.scoring.confluence import ConfluenceScorer
