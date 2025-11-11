@@ -1,17 +1,31 @@
 """Main scanner engine orchestrating all modules"""
 
 import uuid
-from typing import List, Dict, Optional, Callable, Union
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import Callable, Dict, List, Optional, Union, TYPE_CHECKING
 from datetime import datetime
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from snipetrade.models import ScanResult, TradeSetup, Timeframe
-from snipetrade.exchanges import Exchange, create_exchange
+from snipetrade.models import ScanResult, TradeSetup, Timeframe, MarketData, OHLCVTuple
+from snipetrade.exchanges import CcxtAdapter, DEFAULT_EXCHANGE
+from snipetrade.indicators import normalize_timeframes
+from snipetrade.exchanges.phemex_checker import is_pair_on_phemex
 from snipetrade.filters.pair_filter import PairFilter
 from snipetrade.scoring.confluence import ConfluenceScorer
 from snipetrade.output.json_formatter import JSONFormatter
 from snipetrade.output.telegram import TelegramNotifier
 from snipetrade.output.audit import AuditLogger
+from snipetrade.utils.cache import TTLCache
+
+if TYPE_CHECKING:
+    from snipetrade.config import Config
+
+from snipetrade import config as cfg_defaults
+from snipetrade.planner import (
+    decide_execution,
+    position_size_leverage,
+    propose_entries_adv,
+)
+from snipetrade.outputs import formatter as planner_formatter
 
 
 class TradeScanner:
@@ -32,9 +46,12 @@ class TradeScanner:
             self.config = config
         
         # Initialize components
-        self.exchange: Exchange = create_exchange(
-            config.get('exchange', 'binance'),
-            config.get('exchange_config', {})
+        adapter_exchange = config.get('exchange', DEFAULT_EXCHANGE)
+        adapter_ttls = config.get('adapter_cache_ttl', {})
+        self.exchange = CcxtAdapter(
+            adapter_exchange,
+            config.get('exchange_config', {}),
+            ttl_overrides=adapter_ttls
         )
         
         self.pair_filter = PairFilter(
@@ -42,12 +59,22 @@ class TradeScanner:
             custom_exclude=set(config.get('custom_exclude', []))
         )
         
-        self.scorer = ConfluenceScorer(
-            timeframes=config.get('timeframes', [
+        configured_timeframes = normalize_timeframes(
+            config.get('timeframes', [
                 Timeframe.M15.value,
                 Timeframe.H1.value,
                 Timeframe.H4.value
             ])
+        )
+        if not configured_timeframes:
+            configured_timeframes = [
+                Timeframe.M15.value,
+                Timeframe.H1.value,
+                Timeframe.H4.value
+            ]
+
+        self.scorer = ConfluenceScorer(
+            timeframes=configured_timeframes
         )
         
         # Optional components
@@ -76,6 +103,14 @@ class TradeScanner:
         self.max_pairs = config.get('max_pairs', 50)
         self.max_workers = config.get('max_workers', 5)
         self.top_setups_limit = config.get('top_setups_limit', 10)
+        timeframe_cache_ttl = config.get('timeframe_cache_ttl', 300)
+        try:
+            timeframe_cache_ttl = int(timeframe_cache_ttl)
+        except (TypeError, ValueError):
+            timeframe_cache_ttl = 300
+        if timeframe_cache_ttl <= 0:
+            timeframe_cache_ttl = 300
+        self._timeframe_cache: TTLCache[str, List[MarketData]] = TTLCache(timeframe_cache_ttl)
 
     def _scan_pair(self, symbol: str) -> Optional[TradeSetup]:
         """Scan a single trading pair
@@ -87,14 +122,30 @@ class TradeScanner:
             TradeSetup if found, None otherwise
         """
         try:
+            # Ensure pair is tradable on the target exchange (Phemex specific)
+            if not is_pair_on_phemex(symbol, self.exchange):
+                return None
+
             # Fetch multi-timeframe data
             timeframe_data = {}
-            
+
             for timeframe in self.scorer.timeframes:
                 try:
-                    market_data = self.exchange.fetch_ohlcv(symbol, timeframe, limit=200)
+                    cache_key = f"{symbol}:{timeframe}"
+                    cached_data = self._timeframe_cache.get(cache_key)
+                    if cached_data is not None:
+                        timeframe_data[timeframe] = cached_data
+                        continue
+
+                    ohlcv_candles = self.exchange.fetch_ohlcv(symbol, timeframe, limit=200)
+                    market_data = self._convert_ohlcv_to_market_data(
+                        symbol,
+                        timeframe,
+                        ohlcv_candles
+                    )
                     if market_data:
                         timeframe_data[timeframe] = market_data
+                        self._timeframe_cache.set(cache_key, market_data)
                 except Exception as e:
                     if self.audit_logger:
                         self.audit_logger.log_error(
@@ -210,6 +261,33 @@ class TradeScanner:
         
         return scan_result
 
+    def _convert_ohlcv_to_market_data(
+        self,
+        symbol: str,
+        timeframe: str,
+        candles: List[OHLCVTuple]
+    ) -> List[MarketData]:
+        market_data = []
+        exchange_id = self.exchange.exchange_id
+        for candle in candles:
+            ts_value = candle.timestamp
+            if ts_value > 1_000_000_000_000:  # milliseconds
+                ts_value = ts_value / 1000
+            timestamp = datetime.fromtimestamp(ts_value)
+            market_data.append(MarketData(
+                symbol=symbol,
+                exchange=exchange_id,
+                timeframe=timeframe,
+                timestamp=timestamp,
+                ohlcv=candle,
+                open=candle.open,
+                high=candle.high,
+                low=candle.low,
+                close=candle.close,
+                volume=candle.volume
+            ))
+        return market_data
+
     def output_results(self, scan_result: ScanResult) -> None:
         """Output scan results to configured channels
         
@@ -290,3 +368,79 @@ class TradeScanner:
         self.output_results(scan_result)
         
         return scan_result
+
+
+def build_trade_plan(
+    setup: Dict,
+    price_ctx: Dict,
+    orderflow_ctx: Dict,
+    structure_ctx: Dict,
+    vwap_ctx: Dict,
+    atr: float,
+    stop: float,
+    tps: List[float],
+    now_ts_ms: int,
+    leverage: float = None,
+    cfg=cfg_defaults,
+) -> Dict:
+    """Build a complete trade plan payload wired through the planner stack."""
+
+    leverage = leverage or cfg.DEFAULT_LEVERAGE
+    entries = propose_entries_adv(
+        {"direction": setup["direction"], "atr": atr, "stop": stop},
+        price_ctx,
+        orderflow_ctx,
+        structure_ctx,
+        vwap_ctx,
+        cfg,
+    )
+
+    size_info = position_size_leverage(
+        entry=entries["near"]["price"],
+        stop=stop,
+        side=setup["direction"],
+        leverage=leverage,
+        price=price_ctx.get("price"),
+        risk_usd=cfg.RISK_USD,
+        lot_size=cfg.LOT_SIZE,
+        min_notional=cfg.MIN_NOTIONAL,
+        maint_margin_rate=cfg.MAINT_MARGIN_RATE,
+        atr=atr,
+        cfg=cfg,
+    )
+
+    execution = decide_execution(entries["near"], entries["far"], now_ts_ms, cfg)
+
+    liq_gap = abs(stop - size_info["liq"])
+    liq_buffer = f"gap {liq_gap:.3f}"
+
+    payload = {
+        "symbol": setup["symbol"],
+        "timeframe": setup.get("timeframe", "15m"),
+        "direction": setup["direction"],
+        "score": setup.get("score", 0),
+        "entry_near": entries["near"]["price"],
+        "entry_far": entries["far"]["price"],
+        "stop": stop,
+        "tp1": tps[0] if tps else None,
+        "leverage": leverage,
+        "qty": size_info["qty"],
+        "liq": size_info["liq"],
+        "liq_buffer": liq_buffer,
+        "rr": setup.get("rr"),
+        "distance_pct": setup.get("distance_pct"),
+        "spread_bps": orderflow_ctx.get("spread_bps"),
+        "volume_usd_24h": setup.get("volume_usd_24h"),
+        "reasons": setup.get("reasons", []),
+        "execution": execution,
+        "links": setup.get("links", []),
+    }
+
+    payload["alert_text"] = planner_formatter.format_telegram_alert(payload)
+
+    return {
+        "entries": entries,
+        "size": size_info,
+        "execution": execution,
+        "payload": payload,
+    }

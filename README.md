@@ -59,11 +59,13 @@ Edit the configuration file to set your preferences:
 
 ```json
 {
-  "exchange": "binance",
+  "exchange": "phemex",
   "exclude_stablecoins": true,
   "timeframes": ["15m", "1h", "4h"],
   "min_score": 50.0,
   "max_pairs": 50,
+  "markets_ttl_ms": 300000,
+  "ohlcv_cache_ttl_ms": 120000,
   "telegram_bot_token": "YOUR_BOT_TOKEN",
   "telegram_chat_id": "YOUR_CHAT_ID"
 }
@@ -82,13 +84,26 @@ snipetrade scan --config config/my_config.json
 snipetrade scan --exchange bybit --max-pairs 30 --min-score 60
 ```
 
+### 4. Offline Backtest Harness
+
+Run the lightweight harness that replays the bundled OHLCV cache and emits
+Telegram-formatted notifications without requiring network access:
+
+```bash
+python tools/snp_backtest.py
+```
+
+This command leverages the cached Phemex data under `data/ohlcv_cache/` to
+score sample symbols across the 15m/1h/4h timeframes and prints JSON-formatted
+setups alongside the notification payload that would be delivered to Telegram.
+
 ## Configuration
 
 ### Basic Configuration Options
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `exchange` | string | "binance" | Exchange to scan (binance, bybit) |
+| `exchange` | string | "phemex" | Exchange to scan (phemex, binance, bybit) |
 | `exclude_stablecoins` | boolean | true | Exclude stablecoin-to-stablecoin pairs |
 | `custom_exclude` | array | [] | Custom symbols to exclude |
 | `timeframes` | array | ["15m", "1h", "4h"] | Timeframes for analysis |
@@ -104,6 +119,15 @@ snipetrade scan --exchange bybit --max-pairs 30 --min-score 60
 | `json_output_dir` | string | "./output" | Directory for JSON output files |
 | `enable_audit` | boolean | true | Enable audit logging |
 | `audit_dir` | string | "./audit_logs" | Directory for audit logs |
+
+### Market Data Caching
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `markets_ttl_ms` | integer | 300000 | Cache lifetime (ms) for the exchange markets list |
+| `ohlcv_cache_ttl_ms` | integer | 120000 | Cache lifetime (ms) for raw OHLCV responses |
+| `fast_timeframe_ttl_ms` | integer | 900000 | Cache TTL (ms) for fast timeframes (≤15m) |
+| `slow_timeframe_ttl_ms` | integer | 3600000 | Cache TTL (ms) for slow timeframes (≥1h) |
 
 ### Telegram Configuration
 
@@ -229,7 +253,7 @@ from snipetrade.models import ScanResult
 
 # Initialize scanner
 config = {
-    "exchange": "binance",
+    "exchange": "phemex",
     "max_pairs": 50,
     "min_score": 60.0
 }

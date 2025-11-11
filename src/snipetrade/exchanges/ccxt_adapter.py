@@ -1,31 +1,39 @@
-"""CCXT-backed exchange adapter with hardened error handling."""
+"""Unified CCXT exchange adapter with caching and robust error handling."""
 
 from __future__ import annotations
 
 import logging
 import random
 import time
-from typing import Any, Dict, Iterable, Mapping, MutableMapping, Optional, Sequence
+from typing import Any, Dict, Iterable, List, Mapping, MutableMapping, Optional, Sequence
 
-import ccxt
+import ccxt  # type: ignore
 
-from .base import Exchange, ExchangeError, OHLCV, RateLimitError
-from ..utils.symbols import normalize_symbol_for_exchange
-from ..utils.timeframe import parse_tf_to_ms
+from snipetrade.models import OHLCVTuple
+from snipetrade.utils.cache import TTLCache
 
 LOG = logging.getLogger(__name__)
 
+DEFAULT_EXCHANGE = "phemex"
 
-class CCXTExchangeAdapter(Exchange):
-    """Concrete implementation of the :class:`~snipetrade.exchanges.base.Exchange` protocol."""
+
+class CcxtAdapter:
+    """Thin wrapper around CCXT exchanges that adds caching behaviour."""
+
+    DEFAULT_TTLS = {
+        "markets": 60 * 60,   # 1 hour
+        "tickers": 30,        # 30 seconds
+        "ohlcv": 60,          # 1 minute
+    }
 
     _DEFAULT_BACKOFF_BASE = 0.5
     _BACKOFF_CAP = 10.0
 
     def __init__(
         self,
-        exchange_id: str = "phemex",
+        exchange_id: str = DEFAULT_EXCHANGE,
         config: Optional[Dict[str, Any]] = None,
+        ttl_overrides: Optional[Dict[str, int]] = None,
         *,
         market_cache_ttl: float = 300.0,
         max_retries: int = 5,
@@ -38,176 +46,140 @@ class CCXTExchangeAdapter(Exchange):
         self._backoff_base = max(0.1, backoff_base)
 
         exchange_cls = getattr(ccxt, self.exchange_id)
-        self._client = exchange_cls(self._config)
+        self.client = exchange_cls(self._config)
 
-        self._markets_cache: MutableMapping[str, Mapping[str, Any]] = {}
-        self._symbol_map: MutableMapping[str, str] = {}
-        self._markets_expiry = 0.0
-
-    # ---------------------------------------------------------------------
-    # Protocol implementation
-    # ------------------------------------------------------------------
-    def fetch_markets(self, *, force_refresh: bool = False) -> Mapping[str, Mapping[str, Any]]:
-        now = time.time()
-        if not force_refresh and self._markets_cache and now < self._markets_expiry:
-            return self._markets_cache
-
-        raw_markets: Mapping[str, Mapping[str, Any]] = self._request_with_retries(self._client.load_markets)
-
-        normalized: MutableMapping[str, Mapping[str, Any]] = {}
-        symbol_map: MutableMapping[str, str] = {}
-        for symbol, market in raw_markets.items():
-            normalized_symbol = normalize_symbol_for_exchange(self.exchange_id, symbol)
-            normalized[normalized_symbol] = market
-            symbol_map[normalized_symbol] = market.get("symbol", symbol)
-
-        self._markets_cache = normalized
-        self._symbol_map = symbol_map
-        self._markets_expiry = now + self._market_cache_ttl
-        return self._markets_cache
-
-    def fetch_ohlcv(self, symbol: str, timeframe: str, *, limit: int = 100) -> Sequence[OHLCV]:
-        if limit <= 0:
-            return []
-
-        parse_tf_to_ms(timeframe)  # Validate timeframe input.
-        self.fetch_markets()
-        normalized_symbol = normalize_symbol_for_exchange(self.exchange_id, symbol)
-        ccxt_symbol = self._symbol_map.get(normalized_symbol, symbol)
-
-        raw_ohlcv = self._request_with_retries(
-            self._client.fetch_ohlcv,
-            ccxt_symbol,
-            timeframe,
-            limit=limit,
+        self.ttl_overrides = {**self.DEFAULT_TTLS, **(ttl_overrides or {})}
+        self._market_cache: TTLCache[str, Dict] = TTLCache(
+            self.ttl_overrides["markets"]
+        )
+        self._ticker_cache: TTLCache[str, Dict] = TTLCache(
+            self.ttl_overrides["tickers"]
+        )
+        self._ohlcv_cache: TTLCache[str, List[OHLCVTuple]] = TTLCache(
+            self.ttl_overrides["ohlcv"]
         )
 
-        candles: list[OHLCV] = []
-        for row in raw_ohlcv:
-            if not isinstance(row, Iterable) or len(row) < 6:
+    # ------------------------------------------------------------------
+    # Market helpers
+    # ------------------------------------------------------------------
+    def load_markets(self, reload: bool = False) -> Dict:
+        """Return exchange markets, optionally bypassing the cache."""
+
+        cache_key = "markets"
+        if reload:
+            self._market_cache.pop(cache_key)
+
+        cached = self._market_cache.get(cache_key)
+        if cached is not None:
+            return cached
+
+        markets = self.client.load_markets(reload=reload)
+        self._market_cache.set(cache_key, markets)
+        return markets
+
+    def fetch_ohlcv(
+        self,
+        symbol: str,
+        timeframe: str,
+        limit: int = 200,
+        since: Optional[int] = None,
+    ) -> List[OHLCVTuple]:
+        """Fetch OHLCV data while caching results."""
+
+        cache_key = self._ohlcv_cache_key(symbol, timeframe, limit, since)
+        cached = self._ohlcv_cache.get(cache_key)
+        if cached is not None:
+            return cached
+
+        candles = self.client.fetch_ohlcv(symbol, timeframe, since=since, limit=limit)
+        typed_candles: List[OHLCVTuple] = []
+        for entry in candles:
+            if not entry or len(entry) < 6:
                 continue
             try:
-                timestamp = int(row[0])
-                open_, high, low, close, volume = (float(row[i]) for i in range(1, 6))
-            except (TypeError, ValueError) as exc:  # pragma: no cover - defensive branch
-                LOG.debug("Skipping malformed OHLCV row for %s: %s", normalized_symbol, exc)
+                typed_candles.append(self._cast_ohlcv_tuple(entry))
+            except Exception:
                 continue
-            candles.append((timestamp, open_, high, low, close, volume))
+        self._ohlcv_cache.set(cache_key, typed_candles)
+        return typed_candles
 
-        return candles
+    def get_top_pairs(self, limit: int = 50, quote_currency: str = "USDT") -> List[str]:
+        """Get the most liquid pairs filtered by quote currency."""
 
-    def get_top_pairs(self, *, limit: int = 50, quote_currency: str = "USDT") -> Sequence[str]:
-        quote_currency = quote_currency.upper()
-        markets = self.fetch_markets()
+        all_tickers = self._get_all_tickers()
+        pairs: List[tuple[str, float]] = []
 
-        tickers: Mapping[str, Mapping[str, Any]] = {}
-        try:
-            tickers = self._request_with_retries(self._client.fetch_tickers)
-        except RateLimitError:
-            LOG.warning("Rate limit hit while fetching tickers; falling back to market metadata")
-        except ExchangeError:
-            LOG.warning("Unable to fetch tickers; falling back to market metadata")
+        for symbol, ticker in all_tickers.items():
+            if quote_currency.upper() not in symbol.upper():
+                continue
+            quote_volume = ticker.get("quoteVolume") or ticker.get("quoteVolume24h")
+            if quote_volume is None:
+                continue
+            try:
+                volume = float(quote_volume)
+            except (TypeError, ValueError):
+                continue
+            pairs.append((symbol, volume))
 
-        ranked: list[tuple[str, float]] = []
-
-        if tickers:
-            for symbol, ticker in tickers.items():
-                normalized_symbol = normalize_symbol_for_exchange(self.exchange_id, symbol)
-                if not normalized_symbol.endswith(f"/{quote_currency}"):
-                    continue
-                volume = _extract_volume(ticker)
-                ranked.append((normalized_symbol, volume))
-
-        if not ranked:
-            for symbol, market in markets.items():
-                if not symbol.endswith(f"/{quote_currency}"):
-                    continue
-                volume = _extract_volume(market.get("info", {}))
-                ranked.append((symbol, volume))
-
-        ranked.sort(key=lambda item: item[1], reverse=True)
-        return [symbol for symbol, _ in ranked[:limit]]
+        pairs.sort(key=lambda item: item[1], reverse=True)
+        return [symbol for symbol, _ in pairs[:limit]]
 
     def get_current_price(self, symbol: str) -> float:
-        markets = self.fetch_markets()
-        normalized_symbol = normalize_symbol_for_exchange(self.exchange_id, symbol)
-        ccxt_symbol = self._symbol_map.get(normalized_symbol, symbol)
+        """Return the most recent price for ``symbol``."""
 
-        ticker = self._request_with_retries(self._client.fetch_ticker, ccxt_symbol)
-        last = ticker.get("last") or ticker.get("close")
-        if last is None:
-            raise ExchangeError(f"Ticker for {symbol} did not include a last price")
-        return float(last)
+        cache_key = f"ticker:{symbol}"
+        cached = self._ticker_cache.get(cache_key)
+        if cached is not None and "last" in cached:
+            return float(cached["last"])
+
+        ticker = self.client.fetch_ticker(symbol)
+        if ticker:
+            self._ticker_cache.set(cache_key, ticker)
+            last_price = ticker.get("last") or ticker.get("close")
+            if last_price is None:
+                raise ValueError(f"Ticker for {symbol} did not include a price")
+            return float(last_price)
+
+        raise ValueError(f"No ticker data for {symbol}")
 
     # ------------------------------------------------------------------
-    # Internal utilities
+    # Internal helpers
     # ------------------------------------------------------------------
-    def _request_with_retries(self, func, *args, **kwargs):
-        attempt = 0
-        while True:
-            try:
-                return func(*args, **kwargs)
-            except Exception as exc:  # noqa: BLE001 - we handle classification below
-                attempt += 1
-                should_retry, error = self._classify_exception(exc)
-                if not should_retry or attempt >= self._max_retries:
-                    raise error from exc
+    def _get_all_tickers(self) -> Dict[str, Dict]:
+        cache_key = "tickers"
+        cached = self._ticker_cache.get(cache_key)
+        if cached is not None:
+            return cached
 
-                delay = min(self._backoff_base * (2 ** (attempt - 1)), self._BACKOFF_CAP)
-                jitter = random.uniform(0.5, 1.5)
-                sleep_for = delay * jitter
-                LOG.debug(
-                    "Retrying %s after %.2fs due to %s (attempt %s/%s)",
-                    func.__name__,
-                    sleep_for,
-                    error,
-                    attempt,
-                    self._max_retries,
-                )
-                time.sleep(sleep_for)
+        tickers = self.client.fetch_tickers()
+        self._ticker_cache.set(cache_key, tickers)
+        return tickers
 
-    def _classify_exception(self, exc: Exception) -> tuple[bool, ExchangeError]:
-        if isinstance(exc, RateLimitError):  # pragma: no cover - defensive branch
-            return True, exc
+    @staticmethod
+    def _cast_ohlcv_tuple(entry: Sequence) -> OHLCVTuple:
+        timestamp = int(entry[0])
+        open_, high, low, close, volume = (
+            float(entry[1]),
+            float(entry[2]),
+            float(entry[3]),
+            float(entry[4]),
+            float(entry[5]),
+        )
+        return OHLCVTuple(
+            timestamp=timestamp,
+            open=open_,
+            high=high,
+            low=low,
+            close=close,
+            volume=volume,
+        )
 
-        if isinstance(exc, ccxt.RateLimitExceeded):
-            return True, RateLimitError(str(exc))
-
-        http_status = getattr(exc, "http_status", None) or getattr(exc, "status", None)
-        if http_status == 429:
-            return True, RateLimitError(str(exc))
-
-        message = str(exc).lower()
-        if "429" in message or "rate limit" in message:
-            return True, RateLimitError(str(exc))
-
-        if isinstance(exc, (ccxt.NetworkError, ccxt.RequestTimeout, ccxt.ExchangeNotAvailable)):
-            return True, ExchangeError(str(exc))
-
-        if isinstance(exc, ccxt.BaseError):
-            return False, ExchangeError(str(exc))
-
-        return True, ExchangeError(str(exc))
+    @staticmethod
+    def _ohlcv_cache_key(
+        symbol: str, timeframe: str, limit: int, since: Optional[int]
+    ) -> str:
+        return f"{symbol}:{timeframe}:{limit}:{since or 0}"
 
 
-def _extract_volume(data: Mapping[str, Any]) -> float:
-    for key in ("quoteVolume", "volume", "vol24h", "vol24hQuote"):
-        value = data.get(key) if isinstance(data, Mapping) else None
-        if value is not None:
-            try:
-                return float(value)
-            except (TypeError, ValueError):  # pragma: no cover - fallback branch
-                continue
-    return 0.0
-
-
-def create_exchange(
-    exchange_id: Optional[str] = None,
-    config: Optional[Dict[str, Any]] = None,
-    **kwargs: Any,
-) -> CCXTExchangeAdapter:
-    """Factory helper mirroring the previous imperative API."""
-
-    resolved_id = (exchange_id or "phemex").lower()
-    return CCXTExchangeAdapter(resolved_id, config=config, **kwargs)
+__all__ = ["CcxtAdapter", "DEFAULT_EXCHANGE"]
 

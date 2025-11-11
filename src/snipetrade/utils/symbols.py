@@ -17,4 +17,3 @@ def normalize_symbol_for_exchange(exchange_id: str, symbol: str) -> str:
         cleaned = cleaned.replace("/USDTUSDT", "/USDT")
 
     return cleaned
-

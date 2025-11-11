@@ -133,7 +133,7 @@ result = scanner.scan(progress_callback=tracker.on_progress)
 ```python
 {
     # Exchange settings
-    "exchange": "binance",  # or "bybit"
+    "exchange": "phemex",  # or "binance"/"bybit"
     "exchange_config": {
         "apiKey": "...",
         "secret": "...",
@@ -153,6 +153,12 @@ result = scanner.scan(progress_callback=tracker.on_progress)
     "json_output_dir": "./output",
     "enable_audit": true,
     "audit_dir": "./audit_logs",
+
+    # Market data caching
+    "markets_ttl_ms": 300000,
+    "ohlcv_cache_ttl_ms": 120000,
+    "fast_timeframe_ttl_ms": 900000,
+    "slow_timeframe_ttl_ms": 3600000,
     
     # Telegram
     "telegram_bot_token": "...",
@@ -174,13 +180,23 @@ All config values can be set via environment variables:
 
 ```bash
 # Exchange
-EXCHANGE=binance
+EXCHANGE=phemex
 BINANCE_API_KEY=...
 BINANCE_API_SECRET=...
+BYBIT_API_KEY=...
+BYBIT_API_SECRET=...
+PHEMEX_API_KEY=...
+PHEMEX_API_SECRET=...
 
 # Scanning
 MAX_PAIRS=50
 MIN_SCORE_THRESHOLD=60.0
+
+# Market data caching
+MARKETS_TTL_MS=300000
+OHLCV_CACHE_TTL_MS=120000
+FAST_TF_TTL=900000
+SLOW_TF_TTL=3600000
 
 # Telegram
 TELEGRAM_BOT_TOKEN=...
