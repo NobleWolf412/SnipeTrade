@@ -98,7 +98,7 @@ class BinanceExchange(BaseExchange):
         """Get top Binance pairs by 24h volume"""
         try:
             tickers = self.exchange.fetch_tickers()
-            
+
             # Filter by quote currency and sort by volume
             filtered = []
             for symbol, ticker in tickers.items():
@@ -107,7 +107,7 @@ class BinanceExchange(BaseExchange):
                         'symbol': symbol,
                         'volume': float(ticker['quoteVolume'])
                     })
-            
+
             # Sort by volume and get top N
             sorted_pairs = sorted(filtered, key=lambda x: x['volume'], reverse=True)
             return [p['symbol'] for p in sorted_pairs[:limit]]
@@ -125,7 +125,7 @@ class BybitExchange(BaseExchange):
         """Get top Bybit pairs by 24h volume"""
         try:
             tickers = self.exchange.fetch_tickers()
-            
+
             # Filter by quote currency and sort by volume
             filtered = []
             for symbol, ticker in tickers.items():
@@ -134,8 +134,33 @@ class BybitExchange(BaseExchange):
                         'symbol': symbol,
                         'volume': float(ticker['quoteVolume'])
                     })
-            
+
             # Sort by volume and get top N
+            sorted_pairs = sorted(filtered, key=lambda x: x['volume'], reverse=True)
+            return [p['symbol'] for p in sorted_pairs[:limit]]
+        except Exception as e:
+            raise Exception(f"Error fetching top pairs: {str(e)}")
+
+
+class PhemexExchange(BaseExchange):
+    """Phemex exchange connector"""
+
+    def __init__(self, config: Optional[Dict] = None):
+        super().__init__('phemex', config)
+
+    def get_top_pairs(self, limit: int = 50, quote_currency: str = 'USDT') -> List[str]:
+        """Get top Phemex pairs by 24h volume"""
+        try:
+            tickers = self.exchange.fetch_tickers()
+
+            filtered = []
+            for symbol, ticker in tickers.items():
+                if quote_currency in symbol and ticker.get('quoteVolume'):
+                    filtered.append({
+                        'symbol': symbol,
+                        'volume': float(ticker['quoteVolume'])
+                    })
+
             sorted_pairs = sorted(filtered, key=lambda x: x['volume'], reverse=True)
             return [p['symbol'] for p in sorted_pairs[:limit]]
         except Exception as e:
@@ -155,6 +180,7 @@ def create_exchange(exchange_id: str, config: Optional[Dict] = None) -> BaseExch
     exchanges = {
         'binance': BinanceExchange,
         'bybit': BybitExchange,
+        'phemex': PhemexExchange,
     }
     
     exchange_class = exchanges.get(exchange_id.lower())

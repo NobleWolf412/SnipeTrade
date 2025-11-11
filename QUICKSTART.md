@@ -52,10 +52,12 @@ Create `config/my_config.json`:
 
 ```json
 {
-  "exchange": "binance",
+  "exchange": "phemex",
   "max_pairs": 50,
   "min_score": 55.0,
   "timeframes": ["15m", "1h", "4h"],
+  "markets_ttl_ms": 300000,
+  "ohlcv_cache_ttl_ms": 120000,
   "json_output_dir": "./output"
 }
 ```

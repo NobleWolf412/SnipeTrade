@@ -4,7 +4,8 @@ import uuid
 from typing import List, Dict, Optional, Callable, Union
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from snipetrade.models import ScanResult, TradeSetup, Timeframe
+from snipetrade.models import ScanResult, TradeSetup
+from snipetrade.config import DEFAULT_EXCHANGE, DEFAULT_TIMEFRAMES
 from snipetrade.exchanges.base import BaseExchange, create_exchange
 from snipetrade.filters.pair_filter import PairFilter
 from snipetrade.scoring.confluence import ConfluenceScorer
@@ -32,7 +33,7 @@ class TradeScanner:
         
         # Initialize components
         self.exchange = create_exchange(
-            config.get('exchange', 'binance'),
+            config.get('exchange', DEFAULT_EXCHANGE),
             config.get('exchange_config', {})
         )
         
@@ -42,11 +43,7 @@ class TradeScanner:
         )
         
         self.scorer = ConfluenceScorer(
-            timeframes=config.get('timeframes', [
-                Timeframe.M15.value,
-                Timeframe.H1.value,
-                Timeframe.H4.value
-            ])
+            timeframes=config.get('timeframes', DEFAULT_TIMEFRAMES)
         )
         
         # Optional components
