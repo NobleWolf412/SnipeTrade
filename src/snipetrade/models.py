@@ -1,7 +1,7 @@
 """Data models for the trade scanner"""
 
-from typing import Dict, List, Optional, Any
-from pydantic import BaseModel, Field
+from typing import Dict, List, Optional, Any, NamedTuple
+from pydantic import BaseModel, Field, model_validator
 from datetime import datetime
 from enum import Enum
 
@@ -24,17 +24,69 @@ class Timeframe(str, Enum):
     D1 = "1d"
 
 
+class OHLCVTuple(NamedTuple):
+    """Typed OHLCV tuple used across the scanner."""
+
+    timestamp: int
+    open: float
+    high: float
+    low: float
+    close: float
+    volume: float
+
+
 class MarketData(BaseModel):
     """Market data for a trading pair"""
     symbol: str
     exchange: str
     timeframe: str
     timestamp: datetime
+    ohlcv: OHLCVTuple
     open: float
     high: float
     low: float
     close: float
     volume: float
+
+    @model_validator(mode='before')
+    @classmethod
+    def _ensure_ohlcv(cls, values: Dict[str, Any]) -> Dict[str, Any]:
+        data = dict(values)
+        ohlcv = data.get('ohlcv')
+        timestamp = data.get('timestamp')
+
+        def _to_float(name: str) -> float:
+            value = data.get(name)
+            return float(value) if value is not None else 0.0
+
+        if ohlcv is None:
+            if isinstance(timestamp, datetime):
+                ts = int(timestamp.timestamp() * 1000)
+            else:
+                ts = int(datetime.utcnow().timestamp() * 1000)
+            data['ohlcv'] = OHLCVTuple(
+                timestamp=ts,
+                open=_to_float('open'),
+                high=_to_float('high'),
+                low=_to_float('low'),
+                close=_to_float('close'),
+                volume=_to_float('volume'),
+            )
+        else:
+            if not isinstance(ohlcv, OHLCVTuple):
+                ohlcv_tuple = OHLCVTuple(*ohlcv)
+                data['ohlcv'] = ohlcv_tuple
+            else:
+                ohlcv_tuple = ohlcv
+
+            if timestamp is None:
+                data['timestamp'] = datetime.fromtimestamp(ohlcv_tuple.timestamp / 1000)
+
+            for attr in ('open', 'high', 'low', 'close', 'volume'):
+                if data.get(attr) is None:
+                    data[attr] = getattr(ohlcv_tuple, attr)
+
+        return data
 
 
 class IndicatorSignal(BaseModel):

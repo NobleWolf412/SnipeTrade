@@ -5,7 +5,7 @@ from typing import List, Dict, Optional
 import ccxt
 import pandas as pd
 from datetime import datetime, timedelta
-from snipetrade.models import MarketData
+from snipetrade.models import MarketData, OHLCVTuple
 
 
 class BaseExchange(ABC):
@@ -56,16 +56,25 @@ class BaseExchange(ABC):
             market_data = []
             
             for candle in ohlcv:
-                market_data.append(MarketData(
-                    symbol=symbol,
-                    exchange=self.exchange_id,
-                    timeframe=timeframe,
-                    timestamp=datetime.fromtimestamp(candle[0] / 1000),
+                ohlcv_tuple = OHLCVTuple(
+                    timestamp=int(candle[0]),
                     open=float(candle[1]),
                     high=float(candle[2]),
                     low=float(candle[3]),
                     close=float(candle[4]),
-                    volume=float(candle[5])
+                    volume=float(candle[5]),
+                )
+                market_data.append(MarketData(
+                    symbol=symbol,
+                    exchange=self.exchange_id,
+                    timeframe=timeframe,
+                    timestamp=datetime.fromtimestamp(ohlcv_tuple.timestamp / 1000),
+                    ohlcv=ohlcv_tuple,
+                    open=ohlcv_tuple.open,
+                    high=ohlcv_tuple.high,
+                    low=ohlcv_tuple.low,
+                    close=ohlcv_tuple.close,
+                    volume=ohlcv_tuple.volume
                 ))
             
             return market_data

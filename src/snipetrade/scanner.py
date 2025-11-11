@@ -4,13 +4,16 @@ import uuid
 from typing import List, Dict, Optional, Callable, Union
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from snipetrade.models import ScanResult, TradeSetup, Timeframe
-from snipetrade.exchanges.base import BaseExchange, create_exchange
+from snipetrade.models import ScanResult, TradeSetup, Timeframe, MarketData, OHLCVTuple
+from snipetrade.adapters import CcxtAdapter, DEFAULT_EXCHANGE
 from snipetrade.filters.pair_filter import PairFilter
 from snipetrade.scoring.confluence import ConfluenceScorer
 from snipetrade.output.json_formatter import JSONFormatter
 from snipetrade.output.telegram import TelegramNotifier
 from snipetrade.output.audit import AuditLogger
+from snipetrade.utils.cache import TTLCache
+from snipetrade.utils.timeframes import normalize_timeframes
+from snipetrade.utils import phemex_checker
 
 
 class TradeScanner:
@@ -31,9 +34,12 @@ class TradeScanner:
             self.config = config
         
         # Initialize components
-        self.exchange = create_exchange(
-            config.get('exchange', 'binance'),
-            config.get('exchange_config', {})
+        adapter_exchange = config.get('exchange', DEFAULT_EXCHANGE)
+        adapter_ttls = config.get('adapter_cache_ttl', {})
+        self.exchange = CcxtAdapter(
+            adapter_exchange,
+            config.get('exchange_config', {}),
+            ttl_overrides=adapter_ttls
         )
         
         self.pair_filter = PairFilter(
@@ -41,12 +47,22 @@ class TradeScanner:
             custom_exclude=set(config.get('custom_exclude', []))
         )
         
-        self.scorer = ConfluenceScorer(
-            timeframes=config.get('timeframes', [
+        configured_timeframes = normalize_timeframes(
+            config.get('timeframes', [
                 Timeframe.M15.value,
                 Timeframe.H1.value,
                 Timeframe.H4.value
             ])
+        )
+        if not configured_timeframes:
+            configured_timeframes = [
+                Timeframe.M15.value,
+                Timeframe.H1.value,
+                Timeframe.H4.value
+            ]
+
+        self.scorer = ConfluenceScorer(
+            timeframes=configured_timeframes
         )
         
         # Optional components
@@ -75,6 +91,14 @@ class TradeScanner:
         self.max_pairs = config.get('max_pairs', 50)
         self.max_workers = config.get('max_workers', 5)
         self.top_setups_limit = config.get('top_setups_limit', 10)
+        timeframe_cache_ttl = config.get('timeframe_cache_ttl', 300)
+        try:
+            timeframe_cache_ttl = int(timeframe_cache_ttl)
+        except (TypeError, ValueError):
+            timeframe_cache_ttl = 300
+        if timeframe_cache_ttl <= 0:
+            timeframe_cache_ttl = 300
+        self._timeframe_cache: TTLCache[str, List[MarketData]] = TTLCache(timeframe_cache_ttl)
 
     def _scan_pair(self, symbol: str) -> Optional[TradeSetup]:
         """Scan a single trading pair
@@ -86,14 +110,30 @@ class TradeScanner:
             TradeSetup if found, None otherwise
         """
         try:
+            # Ensure pair is tradable on the target exchange (Phemex specific)
+            if not phemex_checker.is_pair_on_phemex(symbol, self.exchange):
+                return None
+
             # Fetch multi-timeframe data
             timeframe_data = {}
-            
+
             for timeframe in self.scorer.timeframes:
                 try:
-                    market_data = self.exchange.fetch_ohlcv(symbol, timeframe, limit=200)
+                    cache_key = f"{symbol}:{timeframe}"
+                    cached_data = self._timeframe_cache.get(cache_key)
+                    if cached_data is not None:
+                        timeframe_data[timeframe] = cached_data
+                        continue
+
+                    ohlcv_candles = self.exchange.fetch_ohlcv(symbol, timeframe, limit=200)
+                    market_data = self._convert_ohlcv_to_market_data(
+                        symbol,
+                        timeframe,
+                        ohlcv_candles
+                    )
                     if market_data:
                         timeframe_data[timeframe] = market_data
+                        self._timeframe_cache.set(cache_key, market_data)
                 except Exception as e:
                     if self.audit_logger:
                         self.audit_logger.log_error(
@@ -208,6 +248,33 @@ class TradeScanner:
             self.audit_logger.log_scan_completed(scan_result)
         
         return scan_result
+
+    def _convert_ohlcv_to_market_data(
+        self,
+        symbol: str,
+        timeframe: str,
+        candles: List[OHLCVTuple]
+    ) -> List[MarketData]:
+        market_data = []
+        exchange_id = self.exchange.exchange_id
+        for candle in candles:
+            ts_value = candle.timestamp
+            if ts_value > 1_000_000_000_000:  # milliseconds
+                ts_value = ts_value / 1000
+            timestamp = datetime.fromtimestamp(ts_value)
+            market_data.append(MarketData(
+                symbol=symbol,
+                exchange=exchange_id,
+                timeframe=timeframe,
+                timestamp=timestamp,
+                ohlcv=candle,
+                open=candle.open,
+                high=candle.high,
+                low=candle.low,
+                close=candle.close,
+                volume=candle.volume
+            ))
+        return market_data
 
     def output_results(self, scan_result: ScanResult) -> None:
         """Output scan results to configured channels

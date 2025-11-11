@@ -8,6 +8,7 @@ from typing import Dict, Any
 from snipetrade.scanner import TradeScanner
 from snipetrade.config import Config
 from snipetrade import __version__
+from snipetrade.adapters import DEFAULT_EXCHANGE
 
 
 def load_config(config_path: str) -> Dict[str, Any]:
@@ -34,7 +35,7 @@ def create_default_config() -> Dict[str, Any]:
         Default configuration dictionary
     """
     return {
-        "exchange": "binance",
+        "exchange": DEFAULT_EXCHANGE,
         "exchange_config": {},
         "exclude_stablecoins": True,
         "custom_exclude": [],
@@ -45,7 +46,13 @@ def create_default_config() -> Dict[str, Any]:
         "top_setups_limit": 10,
         "json_output_dir": "./output",
         "enable_audit": True,
-        "audit_dir": "./audit_logs"
+        "audit_dir": "./audit_logs",
+        "adapter_cache_ttl": {
+            "markets": 3600,
+            "tickers": 30,
+            "ohlcv": 60,
+        },
+        "timeframe_cache_ttl": 300,
     }
 
 
@@ -93,12 +100,16 @@ Examples:
     # Scan command
     scan_parser = subparsers.add_parser('scan', help='Run trade scanner')
     scan_parser.add_argument('--config', '-c', type=str, help='Path to configuration file')
-    scan_parser.add_argument('--exchange', '-e', type=str, help='Exchange to scan (binance, bybit)')
+    scan_parser.add_argument('--exchange', '-e', type=str, help='Exchange to scan (default: phemex)')
     scan_parser.add_argument('--max-pairs', '-n', type=int, help='Maximum number of pairs to scan')
     scan_parser.add_argument('--min-score', '-s', type=float, help='Minimum score threshold')
     scan_parser.add_argument('--output', '-o', type=str, help='Output directory for results')
     scan_parser.add_argument('--telegram-token', type=str, help='Telegram bot token')
     scan_parser.add_argument('--telegram-chat-id', type=str, help='Telegram chat ID')
+    scan_parser.add_argument('--adapter-ttl-markets', type=int, help='Override adapter market TTL (seconds)')
+    scan_parser.add_argument('--adapter-ttl-tickers', type=int, help='Override adapter ticker TTL (seconds)')
+    scan_parser.add_argument('--adapter-ttl-ohlcv', type=int, help='Override adapter OHLCV TTL (seconds)')
+    scan_parser.add_argument('--timeframe-cache-ttl', type=int, help='Override timeframe data cache TTL (seconds)')
     
     # Init command
     init_parser = subparsers.add_parser('init', help='Initialize default configuration')
@@ -133,10 +144,28 @@ Examples:
             config_dict['telegram_bot_token'] = args.telegram_token
         if args.telegram_chat_id:
             config_dict['telegram_chat_id'] = args.telegram_chat_id
-        
+        if args.adapter_ttl_markets is not None:
+            config_dict.setdefault('adapter_cache_ttl', {})['markets'] = args.adapter_ttl_markets
+        if args.adapter_ttl_tickers is not None:
+            config_dict.setdefault('adapter_cache_ttl', {})['tickers'] = args.adapter_ttl_tickers
+        if args.adapter_ttl_ohlcv is not None:
+            config_dict.setdefault('adapter_cache_ttl', {})['ohlcv'] = args.adapter_ttl_ohlcv
+        if args.timeframe_cache_ttl is not None:
+            config_dict['timeframe_cache_ttl'] = args.timeframe_cache_ttl
+
         # Rebuild config with overrides
-        if args.config or any([args.exchange, args.max_pairs, args.min_score, args.output, 
-                                args.telegram_token, args.telegram_chat_id]):
+        if args.config or any([
+            args.exchange,
+            args.max_pairs,
+            args.min_score,
+            args.output,
+            args.telegram_token,
+            args.telegram_chat_id,
+            args.adapter_ttl_markets,
+            args.adapter_ttl_tickers,
+            args.adapter_ttl_ohlcv,
+            args.timeframe_cache_ttl,
+        ]):
             # Create temp JSON for override handling
             import tempfile
             with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
