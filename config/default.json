@@ -1,5 +1,5 @@
 {
-  "exchange": "binance",
+  "exchange": "phemex",
   "exchange_config": {},
   "exclude_stablecoins": true,
   "custom_exclude": [],
@@ -10,5 +10,9 @@
   "top_setups_limit": 10,
   "json_output_dir": "./output",
   "enable_audit": true,
-  "audit_dir": "./audit_logs"
+  "audit_dir": "./audit_logs",
+  "markets_ttl_ms": 300000,
+  "ohlcv_cache_ttl_ms": 120000,
+  "fast_timeframe_ttl_ms": 900000,
+  "slow_timeframe_ttl_ms": 3600000
 }

@@ -6,7 +6,15 @@ import sys
 from pathlib import Path
 from typing import Dict, Any
 from snipetrade.scanner import TradeScanner
-from snipetrade.config import Config
+from snipetrade.config import (
+    Config,
+    DEFAULT_EXCHANGE,
+    DEFAULT_TIMEFRAMES,
+    MARKETS_TTL_MS,
+    OHLCV_CACHE_TTL_MS,
+    FAST_TF_TTL,
+    SLOW_TF_TTL,
+)
 from snipetrade import __version__
 
 
@@ -34,18 +42,22 @@ def create_default_config() -> Dict[str, Any]:
         Default configuration dictionary
     """
     return {
-        "exchange": "binance",
+        "exchange": DEFAULT_EXCHANGE,
         "exchange_config": {},
         "exclude_stablecoins": True,
         "custom_exclude": [],
-        "timeframes": ["15m", "1h", "4h"],
+        "timeframes": DEFAULT_TIMEFRAMES,
         "min_score": 50.0,
         "max_pairs": 50,
         "max_workers": 5,
         "top_setups_limit": 10,
         "json_output_dir": "./output",
         "enable_audit": True,
-        "audit_dir": "./audit_logs"
+        "audit_dir": "./audit_logs",
+        "markets_ttl_ms": MARKETS_TTL_MS,
+        "ohlcv_cache_ttl_ms": OHLCV_CACHE_TTL_MS,
+        "fast_timeframe_ttl_ms": FAST_TF_TTL,
+        "slow_timeframe_ttl_ms": SLOW_TF_TTL,
     }
 
 
@@ -93,7 +105,7 @@ Examples:
     # Scan command
     scan_parser = subparsers.add_parser('scan', help='Run trade scanner')
     scan_parser.add_argument('--config', '-c', type=str, help='Path to configuration file')
-    scan_parser.add_argument('--exchange', '-e', type=str, help='Exchange to scan (binance, bybit)')
+    scan_parser.add_argument('--exchange', '-e', type=str, help='Exchange to scan (phemex, binance, bybit)')
     scan_parser.add_argument('--max-pairs', '-n', type=int, help='Maximum number of pairs to scan')
     scan_parser.add_argument('--min-score', '-s', type=float, help='Minimum score threshold')
     scan_parser.add_argument('--output', '-o', type=str, help='Output directory for results')

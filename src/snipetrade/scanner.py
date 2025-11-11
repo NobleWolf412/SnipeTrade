@@ -43,11 +43,7 @@ class TradeScanner:
         )
         
         self.scorer = ConfluenceScorer(
-            timeframes=config.get('timeframes', [
-                Timeframe.M15.value,
-                Timeframe.H1.value,
-                Timeframe.H4.value
-            ])
+            timeframes=config.get('timeframes', DEFAULT_TIMEFRAMES)
         )
         
         # Optional components

@@ -41,4 +41,3 @@ class Exchange(Protocol):
 
     def get_current_price(self, symbol: str) -> float:
         """Return the latest trade price for the provided symbol."""
-
