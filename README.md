@@ -84,6 +84,19 @@ snipetrade scan --config config/my_config.json
 snipetrade scan --exchange bybit --max-pairs 30 --min-score 60
 ```
 
+### 4. Offline Backtest Harness
+
+Run the lightweight harness that replays the bundled OHLCV cache and emits
+Telegram-formatted notifications without requiring network access:
+
+```bash
+python tools/snp_backtest.py
+```
+
+This command leverages the cached Phemex data under `data/ohlcv_cache/` to
+score sample symbols across the 15m/1h/4h timeframes and prints JSON-formatted
+setups alongside the notification payload that would be delivered to Telegram.
+
 ## Configuration
 
 ### Basic Configuration Options
